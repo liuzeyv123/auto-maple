@@ -73,86 +73,97 @@ class Bot(Configurable):
 
     def _main(self):
         """
-        The main body of Bot that executes the user's routine.
+        Bot的主函数，负责执行用户的例程。
         :return:    None
         """
 
-        print('\n[~] No detection algorithm onboard, offloaded to a server')
+        print('\n[~] 无内置检测算法，已卸载到服务器')
 
-        self.ready = True
-        config.listener.enabled = True
-        last_fed = time.time()
-        # Item buffs 1-4: activate immediately (last_used=0). Familiar: wait full interval.
-        last_item_buff = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}
-        last_familiar_buff = time.time()
-        gc_counter = 0  # Counter for periodic garbage collection
+        # 初始化状态
+        self.ready = True  # 设置Bot为就绪状态
+        config.listener.enabled = True  # 启用监听器
+        last_fed = time.time()  # 记录上次喂食宠物的时间
+        # 物品 buff 1-4：立即激活（last_used=0）。宠物：等待完整间隔。
+        last_item_buff = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}  # 记录各物品buff的上次使用时间
+        last_familiar_buff = time.time()  # 记录宠物buff的上次使用时间
+        gc_counter = 0  # 周期性垃圾收集的计数器
         
         while True:
             try:
-                # Auto routine: resolve waypoints from minimap match once we have a live minimap
+                # 自动例程：当有实时小地图时，从地图匹配解析路径点
                 if config.enabled and self.command_book is not None and getattr(config.routine, 'auto_mode', False) and len(config.routine) == 0:
                     config.routine.resolve_auto_routine(
-                        skill_rotation_duration=getattr(settings, 'skill_rotation_duration', 5.0),
-                        move_tolerance=getattr(settings, 'move_tolerance', 0.075),
+                        skill_rotation_duration=getattr(settings, 'skill_rotation_duration', 5.0),  # 技能轮转持续时间
+                        move_tolerance=getattr(settings, 'move_tolerance', 0.075),  # 移动容差
                     )
-                    time.sleep(0.5)
+                    time.sleep(0.5)  # 短暂延迟
                     continue
+                
+                # 当Bot启用且例程不为空且命令书已加载时
                 if config.enabled and len(config.routine) > 0 and self.command_book is not None:
-                    # Buff and feed pets
+                    # 增益buff和喂食宠物
                     try:
-                        self.command_book.buff.main()
-                        pet_settings = config.gui.settings.pets
-                        auto_feed = pet_settings.auto_feed.get()
-                        num_pets = pet_settings.num_pets.get()
-                        now = time.time()
+                        self.command_book.buff.main()  # 执行命令书中的buff方法
+                        pet_settings = config.gui.settings.pets  # 获取宠物设置
+                        auto_feed = pet_settings.auto_feed.get()  # 获取是否自动喂食
+                        num_pets = pet_settings.num_pets.get()  # 获取宠物数量
+                        now = time.time()  # 当前时间
+                        
+                        # 自动喂食宠物
                         if auto_feed and now - last_fed > 1200 / num_pets:
-                            press(self.config['Feed pet'], 1)
-                            last_fed = now
+                            press(self.config['Feed pet'], 1)  # 按下喂食宠物的按键
+                            last_fed = now  # 更新上次喂食时间
+                        
+                        # 处理物品buff
                         ib = getattr(getattr(getattr(config, 'gui', None), 'settings', None), 'item_buffs', None)
                         ib = ib.settings if ib else None
                         if ib:
+                            # 处理1-4号物品buff
                             for i in range(1, 5):
-                                interval = ib.get(f'Item buff {i}')
+                                interval = ib.get(f'Item buff {i}')  # 获取buff间隔
+                                # 如果间隔大于0且（首次使用或已超过间隔时间）
                                 if interval > 0 and (last_item_buff[i] == 0 or now - last_item_buff[i] >= interval):
-                                    press(self.config[f'Item buff {i}'], 1)
-                                    time.sleep(2)
-                                    last_item_buff[i] = now
-                            fam_interval = ib.get('Familiar pot')
+                                    press(self.config[f'Item buff {i}'], 1)  # 按下物品buff按键
+                                    time.sleep(2)  # 等待2秒
+                                    last_item_buff[i] = now  # 更新上次使用时间
+                            
+                            # 处理宠物药水
+                            fam_interval = ib.get('Familiar pot')  # 获取宠物药水间隔
                             if fam_interval > 0 and now - last_familiar_buff >= fam_interval:
-                                press(self.config['Familiar pot'], 1)
-                                time.sleep(2)
-                                last_familiar_buff = now
+                                press(self.config['Familiar pot'], 1)  # 按下宠物药水按键
+                                time.sleep(2)  # 等待2秒
+                                last_familiar_buff = now  # 更新上次使用时间
                     except Exception as e:
-                        print(f'[!] Error in buff/feed logic: {e}')
-                        time.sleep(1)
+                        print(f'[!] buff/喂食逻辑错误: {e}')
+                        time.sleep(1)  # 出错后暂停1秒
 
-                    # Position monitoring: jump if player hasn't moved for 10 seconds
+                    # 位置监控：如果玩家3秒未移动则执行跳跃
                     try:
-                        current_pos = config.player_pos
-                        if current_pos != (0, 0):  # Only if position is valid
-                            distance = utils.distance(current_pos, self.last_position)
-                            if distance > settings.move_tolerance:
-                                # Player has moved, update last position and time
+                        current_pos = config.player_pos  # 获取当前玩家位置
+                        if current_pos != (0, 0):  # 仅当位置有效时
+                            distance = utils.distance(current_pos, self.last_position)  # 计算与上次位置的距离
+                            if distance > settings.move_tolerance:  # 如果移动距离超过容差
+                                # 玩家已移动，更新上次位置和时间
                                 self.last_position = current_pos
                                 self.position_time = now
-                            elif now - self.position_time > 5:
-                                # Player hasn't moved for 5 seconds, perform jump
-                                print('[~] Player hasn\'t moved for 5 seconds, performing jump')
-                                # Randomly choose left or right direction
+                            elif now - self.position_time > 3:  # 如果玩家3秒未移动
+                                # 玩家3秒未移动，执行跳跃
+                                print('[~] 玩家3秒未移动，执行跳跃')
+                                # 随机选择左右方向
                                 direction = random.choice(['left', 'right'])
-                                # Press direction key and jump
+                                # 按下方向键并跳跃
                                 key_down(direction)
-                                time.sleep(0.1)
-                                # Use the jump key from the command book's Key class
+                                time.sleep(0.1)  # 短暂延迟
+                                # 使用命令书中Key类的跳跃键
                                 jump_key = getattr(self.command_book.module.Key, 'JUMP', 'c')
-                                press(jump_key, 2)  # Flash jump (2 presses)
-                                key_up(direction)
-                                time.sleep(0.5)
-                                # Update position time after jump
+                                press(jump_key, 2)  # 二段跳（按1次）
+                                key_up(direction)  # 释放方向键
+                                time.sleep(0.6)  # 短暂延迟
+                                # 跳跃后更新位置时间
                                 self.position_time = now
                     except Exception as e:
-                        print(f'[!] Error in position monitoring: {e}')
-                        time.sleep(1)
+                        print(f'[!] 位置监控错误: {e}')
+                        time.sleep(1)  # 出错后暂停1秒
 
                     # Highlight the current Point
                     try:
@@ -237,7 +248,7 @@ class Bot(Configurable):
                 print('找到解决方案，输入结果')
                 # 执行箭头键序列
                 for arrow in solution:
-                    press(arrow, 1, down_time=0.1)
+                    press(arrow, 1, down_time=0.05)
                 time.sleep(1)
                 
                 # 检查符文buff是否出现，确认符文已被成功解决

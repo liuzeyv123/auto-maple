@@ -89,7 +89,7 @@ def reset():
     global move_tolerance, adjust_tolerance, record_layout, buff_cooldown
     global skill_rotation_mode, skill_rotation_duration
     move_tolerance = 0.07
-    adjust_tolerance = 0.02
+    adjust_tolerance = 0.03
     record_layout = False
     buff_cooldown = 180
     skill_rotation_mode = False
@@ -100,7 +100,7 @@ def reset():
 move_tolerance = 0.07
 
 # The allowed error from a specific location while adjusting to that location
-adjust_tolerance = 0.02
+adjust_tolerance = 0.03
 
 # Whether the bot should save new player positions to the current layout
 record_layout = False

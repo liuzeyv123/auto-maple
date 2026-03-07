@@ -289,21 +289,52 @@ class Async(threading.Thread):
         return f
 
 
-def enter_cash_shop(repeat: int = 7):
+def enter_cash_shop():
     """
-    Send F5 + Enter repeatedly to open the cash shop.
-    :param repeat: Number of F5+Enter cycles (default 10).
+    Send F5 repeatedly until the cash shop image is detected.
     """
-    for _ in range(repeat):
+    import cv2
+    from src.modules.capture import Capture
+    
+    # 加载商城图片模板
+    shop_template = cv2.imread('assets/shop.png', 0)
+    if shop_template is None:
+        print("错误: 无法加载商城图片模板 assets/shop.png")
+        return
+    
+    # 初始化捕获对象
+    capture = Capture()
+    capture.start()
+    
+    # 等待捕获对象初始化
+    time.sleep(3)
+    
+    print("开始尝试进入商城，持续按 F5 直到检测到商城界面...")
+    
+    # 持续按 F5 直到检测到商城图片
+    while True:
+        # 按 F5
         press("f5", 3, down_time=0.2, up_time=0.2)
         print("已发送 F5")
-        time.sleep(2)
+        
+        # 等待一段时间让界面响应
+        time.sleep(0.5)
+        
+        # 检查是否捕获到帧
+        if hasattr(capture, 'frame') and capture.frame is not None:
+            # 尝试匹配商城图片
+            matches = multi_match(capture.frame, shop_template, threshold=0.8)
+            if matches:
+                print("检测到商城界面，停止按 F5")
+                break
+        # 避免无限循环导致系统资源占用过高
+        time.sleep(0.5)
 
 
 def exit_cash_shop():
     """Send Esc/Enter sequence to leave the cash shop and wait for loading."""
     print("开始退出商城...")
-    time.sleep(55)
+    time.sleep(1)
     print("已发送 Esc")
     press("esc", 1, down_time=0.2)
     time.sleep(1)

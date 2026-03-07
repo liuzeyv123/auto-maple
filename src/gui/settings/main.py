@@ -18,7 +18,7 @@ class Settings(Tab):
         self.columnconfigure(3, weight=1)
 
         self.column1 = Frame(self)
-        self.column1.grid(row=0, column=1, sticky=tk.N, padx=10, pady=10)
+        self.column1.grid(row=0, column=1, sticky=tk.NS, padx=10, pady=10)
         self.controls = KeyBindings(self.column1, 'Auto Maple Controls', config.listener)
         self.controls.pack(side=tk.TOP, fill='x', expand=True)
         self.common_bindings = KeyBindings(self.column1, 'In-game Keybindings', config.bot)

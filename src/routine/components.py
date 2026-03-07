@@ -276,145 +276,181 @@ class Move(Command):
         self.prev_direction = new
 
     def main(self):
-        counter = self.max_steps
+        """
+        执行移动操作，将角色移动到目标位置
+        """
+        counter = self.max_steps  # 剩余步数计数器
+        # 获取从当前位置到目标位置的最短路径
         path = config.layout.shortest_path(config.player_pos, self.target)
+        
+        # 遍历路径上的每个点
         for i, point in enumerate(path):
-            toggle = True
-            self.prev_direction = ''
+            toggle = True  # 用于切换水平和垂直移动
+            self.prev_direction = ''  # 记录上次移动方向
+            # 计算当前位置到当前路径点的距离
             local_error = utils.distance(config.player_pos, point)
+            # 计算当前位置到最终目标的距离
             global_error = utils.distance(config.player_pos, self.target)
+            
+            # 当Bot启用、还有步数、且未到达目标时继续移动
             while config.enabled and counter > 0 and \
                     local_error > settings.move_tolerance and \
                     global_error > settings.move_tolerance:
                 if toggle:
-                    d_x = point[0] - config.player_pos[0]
+                    # 水平移动
+                    d_x = point[0] - config.player_pos[0]  # 计算x方向距离
+                    # 如果距离大于移动容差的对角线分量
                     if abs(d_x) > settings.move_tolerance / math.sqrt(2):
+                        # 确定移动方向
                         if d_x < 0:
                             key = 'left'
                         else:
                             key = 'right'
+                        # 更新移动方向
                         self._new_direction(key)
-                        # Occasional jump during horizontal movement to avoid getting stuck on ladders
+                        # 30%概率在水平移动时跳跃，避免被梯子卡住
                         if random.random() < 0.3:
+                            # 获取跳跃键（优先从命令书获取，否则使用默认值'space'）
                             jump_key = getattr(
                                 getattr(getattr(config.bot, 'command_book', None), 'module', None), 'Key', None
                             )
                             jump_key = getattr(jump_key, 'JUMP', 'space') if jump_key else 'space'
+                            # 执行跳跃
                             press(jump_key, 1, down_time=0.05, up_time=0.05)
+                            # 随机延迟
                             time.sleep(utils.rand_float(0.05, 0.12))
+                        # 执行移动步骤
                         step(key, point)
+                        # 如果启用布局记录，添加当前位置到布局
                         if settings.record_layout:
                             time.sleep(0.3)
                             config.layout.add(*config.player_pos)
+                        # 减少剩余步数
                         counter -= 1
+                        # 尝试在移动过程中使用技能
                         _try_skill_during_move()
+                        # 如果不是最后一个路径点，添加短暂延迟
                         if i < len(path) - 1:
                             time.sleep(0.15)
                 else:
-                    d_y = point[1] - config.player_pos[1]
+                    # 垂直移动
+                    d_y = point[1] - config.player_pos[1]  # 计算y方向距离
+                    # 如果距离大于移动容差的对角线分量
                     if abs(d_y) > settings.move_tolerance / math.sqrt(2):
+                        # 确定移动方向
                         if d_y < 0:
                             key = 'up'
                         else:
                             key = 'down'
-                        # Never hold 'up' - step uses rope lift only, no up+jump
+                        # 永远不要按住'up'键 - step函数只使用绳索提升，不使用上+跳
                         if key == 'up':
                             if self.prev_direction:
-                                key_up(self.prev_direction)
+                                key_up(self.prev_direction)  # 释放之前的方向键
                                 self.prev_direction = ''
                         else:
+                            # 更新移动方向
                             self._new_direction(key)
+                        # 执行移动步骤
                         step(key, point)
+                        # 如果启用布局记录，添加当前位置到布局
                         if settings.record_layout:
                             time.sleep(0.3)
                             config.layout.add(*config.player_pos)
+                        # 减少剩余步数
                         counter -= 1
+                        # 尝试在移动过程中使用技能
                         _try_skill_during_move()
+                        # 如果不是最后一个路径点，添加短暂延迟
                         if i < len(path) - 1:
                             time.sleep(0.05)
+                # 更新距离值
                 local_error = utils.distance(config.player_pos, point)
                 global_error = utils.distance(config.player_pos, self.target)
+                # 切换移动模式（水平/垂直）
                 toggle = not toggle
+            # 如果还有按下的方向键，释放它
             if self.prev_direction:
                 key_up(self.prev_direction)
 
 
 class Adjust(Command):
-    """Fine-tunes player position using small movements."""
+    """使用小幅度移动微调玩家位置。"""
 
     def __init__(self, x, y, max_steps=5):
         super().__init__(locals())
-        self.target = (float(x), float(y))
-        self.max_steps = settings.validate_nonnegative_int(max_steps)
+        self.target = (float(x), float(y))  # 目标位置
+        self.max_steps = settings.validate_nonnegative_int(max_steps)  # 最大调整步数
 
 
 def step(direction, target):
     """
-    The default 'step' function. If not overridden, immediately stops the bot.
-    :param direction:   The direction in which to move.
-    :param target:      The target location to step towards.
+    默认的'step'函数。如果未被覆盖，将立即停止Bot。
+    :param direction:   移动方向
+    :param target:      要移动到的目标位置
     :return:            None
     """
 
-    print("\n[!] Function 'step' not implemented in current command book, aborting process.")
+    print("\n[!] 当前命令书中未实现'step'函数，中止进程。")
     config.enabled = False
 
 
 class Wait(Command):
-    """Waits for a set amount of time."""
+    """等待指定的时间。"""
 
     def __init__(self, duration):
         super().__init__(locals())
-        self.duration = float(duration)
+        self.duration = float(duration)  # 等待时间（秒）
 
     def main(self):
-        time.sleep(self.duration)
+        time.sleep(self.duration)  # 执行等待
 
 
 class Walk(Command):
-    """Walks in the given direction for a set amount of time."""
+    """向指定方向行走指定的时间。"""
 
     def __init__(self, direction, duration):
         super().__init__(locals())
+        # 验证并设置水平方向
         self.direction = settings.validate_horizontal_arrows(direction)
-        self.duration = float(duration)
+        self.duration = float(duration)  # 行走时间（秒）
 
     def main(self):
-        key_down(self.direction)
-        time.sleep(self.duration)
-        key_up(self.direction)
-        time.sleep(0.05)
+        key_down(self.direction)  # 按下方向键
+        time.sleep(self.duration)  # 持续指定时间
+        key_up(self.direction)  # 释放方向键
+        time.sleep(0.05)  # 短暂延迟
 
 
 class Fall(Command):
     """
-    Performs a down-jump and then free-falls until the player exceeds a given distance
-    from their starting position.
+    执行下跳，然后自由落体直到玩家超过与起始位置的给定距离。
     """
 
     def __init__(self, distance=settings.move_tolerance / 2):
         super().__init__(locals())
-        self.distance = float(distance)
+        self.distance = float(distance)  # 下落距离阈值
 
     def main(self):
-        start = config.player_pos
-        key_down('down')
-        time.sleep(0.05)
+        start = config.player_pos  # 记录起始位置
+        key_down('down')  # 按下下方向键
+        time.sleep(0.05)  # 短暂延迟
+        # 如果启用舞台恐惧模式，有50%概率添加随机延迟
         if config.stage_fright and utils.bernoulli(0.5):
             time.sleep(utils.rand_float(0.2, 0.4))
-        counter = 6
+        counter = 6  # 最大跳跃次数
+        # 当Bot启用、还有跳跃次数、且未达到距离阈值时继续
         while config.enabled and \
                 counter > 0 and \
                 utils.distance(start, config.player_pos) < self.distance:
-            press('space', 1, down_time=0.1)
+            press('space', 1, down_time=0.1)  # 按空格键跳跃
             counter -= 1
-        key_up('down')
-        time.sleep(0.05)
+        key_up('down')  # 释放下方向键
+        time.sleep(0.05)  # 短暂延迟
 
 
-# Standard keys for skill rotation (fallback when Key lookup fails)
-SKILL_ROTATION_MAIN_ATTACK_KEY = 'ctrl'
-SKILL_ROTATION_JUMP_KEY = 'space'
+# 技能轮转的标准按键（当Key查找失败时的备用值）
+SKILL_ROTATION_MAIN_ATTACK_KEY = 'ctrl'  # 主攻击键
+SKILL_ROTATION_JUMP_KEY = 'space'  # 跳跃键
 
 
 def _resolve_key(module, skill_id: str) -> str:

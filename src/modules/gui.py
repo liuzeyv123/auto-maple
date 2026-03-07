@@ -25,7 +25,7 @@ class GUI:
         icon = tk.PhotoImage(file='assets/icon.png')
         self.root.iconphoto(False, icon)
         self.root.geometry(GUI.RESOLUTIONS['DEFAULT'])
-        self.root.resizable(False, False)
+        self.root.resizable(True, True)
 
         # Initialize GUI variables
         self.routine_var = tk.StringVar()
@@ -92,12 +92,13 @@ class GUI:
         nav = e.widget
         curr_id = nav.select()
         nav.nametowidget(curr_id).focus()      # Focus the current Tab
-        page = nav.tab(curr_id, 'text')
-        if self.root.state() != 'zoomed':
-            if page in GUI.RESOLUTIONS:
-                self.root.geometry(GUI.RESOLUTIONS[page])
-            else:
-                self.root.geometry(GUI.RESOLUTIONS['DEFAULT'])
+        # 不再强制重置窗口大小，允许用户自由调整
+        # page = nav.tab(curr_id, 'text')
+        # if self.root.state() != 'zoomed':
+        #     if page in GUI.RESOLUTIONS:
+        #         self.root.geometry(GUI.RESOLUTIONS[page])
+        #     else:
+        #         self.root.geometry(GUI.RESOLUTIONS['DEFAULT'])
 
     def start(self):
         """Starts the GUI as well as any scheduled functions."""

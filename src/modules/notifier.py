@@ -108,99 +108,140 @@ class Notifier:
                 del interrupting_message_frame  # Release color frame; we only need grayscale now
 
                 # Check for Pollo Message
-                pollo = utils.multi_match_gray(interrupting_message_gray, POLLO_TEMPLATE, threshold=0.9)
-                if len(pollo) > 0:
-                    print("Pollo Message Detected")
-                    print(pollo)
-                    press("esc", 1, down_time=0.1)
+                try:
+                    pollo = utils.multi_match_gray(interrupting_message_gray, POLLO_TEMPLATE, threshold=0.9)
+                    if len(pollo) > 0:
+                        print("Pollo Message Detected")
+                        print(pollo)
+                        press("esc", 1, down_time=0.1)
+                except Exception as e:
+                    print(f"[!] Error in pollo detection: {e}")
 
                 # Check for Fritto Message
-                fritto = utils.multi_match_gray(interrupting_message_gray, FRITTO_TEMPLATE, threshold=0.9)
-                if len(fritto) > 0:
-                    print("Fritto Message Detected")
-                    print(fritto)
-                    press("esc", 1, down_time=0.1)
+                try:
+                    fritto = utils.multi_match_gray(interrupting_message_gray, FRITTO_TEMPLATE, threshold=0.9)
+                    if len(fritto) > 0:
+                        print("Fritto Message Detected")
+                        print(fritto)
+                        press("esc", 1, down_time=0.1)
+                except Exception as e:
+                    print(f"[!] Error in fritto detection: {e}")
 
                 # Check for Especia Message
-                especia = utils.multi_match_gray(interrupting_message_gray, ESPECIA_TEMPLATE, threshold=0.9)
-                if len(especia) > 0:
-                    print("Especia Message Detected")
-                    print(especia)
-                    press("esc", 1, down_time=0.1)
+                try:
+                    especia = utils.multi_match_gray(interrupting_message_gray, ESPECIA_TEMPLATE, threshold=0.9)
+                    if len(especia) > 0:
+                        print("Especia Message Detected")
+                        print(especia)
+                        press("esc", 1, down_time=0.1)
+                except Exception as e:
+                    print(f"[!] Error in especia detection: {e}")
 
                 # Check for Twentoona Message
-                twentoona = utils.multi_match_gray(interrupting_message_gray, TWENTOONA_TEMPLATE, threshold=0.9)
-                if len(twentoona) > 0:
-                    print("Twentoona Message Detected")
-                    print(twentoona)
-                    press("esc", 1, down_time=0.1)
+                try:
+                    twentoona = utils.multi_match_gray(interrupting_message_gray, TWENTOONA_TEMPLATE, threshold=0.9)
+                    if len(twentoona) > 0:
+                        print("Twentoona Message Detected")
+                        print(twentoona)
+                        press("esc", 1, down_time=0.1)
+                except Exception as e:
+                    print(f"[!] Error in twentoona detection: {e}")
 
                 # Check for Lie Detector
-                if LIE_DETECTOR_TEMPLATE is not None:
-                    lie_detector = utils.multi_match_gray(interrupting_message_gray, LIE_DETECTOR_TEMPLATE, threshold=0.9)
-                    if len(lie_detector) > 0:
-                        print("Lie Detector detected")
-                        os.system('taskkill /f /im "MapleStory.exe"')
-                        os.system(f'taskkill /f /pid {os.getpid()}')
+                try:
+                    if LIE_DETECTOR_TEMPLATE is not None:
+                        lie_detector = utils.multi_match_gray(interrupting_message_gray, LIE_DETECTOR_TEMPLATE, threshold=0.9)
+                        if len(lie_detector) > 0:
+                            print("Lie Detector detected")
+                            os.system('taskkill /f /im "MapleStory.exe"')
+                            os.system(f'taskkill /f /pid {os.getpid()}')
+                except Exception as e:
+                    print(f"[!] Error in lie detector detection: {e}")
 
                 # Check for Skull Death
-                skull_death_left_arrow = utils.multi_match_gray(interrupting_message_gray, SKULL_DEATH_LEFT_ARROW_TEMPLATE, threshold=0.9)
-                skull_death_right_arrow = utils.multi_match_gray(interrupting_message_gray, SKULL_DEATH_RIGHT_ARROW_TEMPLATE, threshold=0.9)
-                skull_death_hp_bar = utils.multi_match_gray(interrupting_message_gray, SKULL_DEATH_HP_BAR_TEMPLATE, threshold=0.9)
-                skull_death_skull = utils.multi_match_gray(interrupting_message_gray, SKULL_DEATH_SKULL_TEMPLATE, threshold=0.9)
-                if len(skull_death_left_arrow) > 0 or len(skull_death_right_arrow) > 0 or len(skull_death_hp_bar) > 0 or len(skull_death_skull) > 0:
-                    print("Skull Death Detected")
-                    print(f"Detection: left arrow {skull_death_left_arrow}, right arrow {skull_death_right_arrow}, hp bar {skull_death_hp_bar}, skull {skull_death_skull}")
-                    for _ in range(20):
-                        press("left", 1, down_time=0.1)
-                        press("right", 1, down_time=0.1)
-                    print("Skull Death Avoided")
+                try:
+                    skull_death_left_arrow = utils.multi_match_gray(interrupting_message_gray, SKULL_DEATH_LEFT_ARROW_TEMPLATE, threshold=0.9)
+                    skull_death_right_arrow = utils.multi_match_gray(interrupting_message_gray, SKULL_DEATH_RIGHT_ARROW_TEMPLATE, threshold=0.9)
+                    skull_death_hp_bar = utils.multi_match_gray(interrupting_message_gray, SKULL_DEATH_HP_BAR_TEMPLATE, threshold=0.9)
+                    skull_death_skull = utils.multi_match_gray(interrupting_message_gray, SKULL_DEATH_SKULL_TEMPLATE, threshold=0.9)
+                    if len(skull_death_left_arrow) > 0 or len(skull_death_right_arrow) > 0 or len(skull_death_hp_bar) > 0 or len(skull_death_skull) > 0:
+                        print("Skull Death Detected")
+                        print(f"Detection: left arrow {skull_death_left_arrow}, right arrow {skull_death_right_arrow}, hp bar {skull_death_hp_bar}, skull {skull_death_skull}")
+                        for _ in range(20):
+                            press("left", 1, down_time=0.1)
+                            press("right", 1, down_time=0.1)
+                        print("Skull Death Avoided")
+                except Exception as e:
+                    print(f"[!] Error in skull death detection: {e}")
 
                 # Check for elite warning: wait 7s, use Origin, wait 5s, use Ascent (6th job; not in skill rotation)
-                elite = utils.multi_match_gray(interrupting_message_gray, ELITE_TEMPLATE, threshold=0.9)
-                if len(elite) > 0:
-                    print("Elite Boss Detected - using Origin then Ascent.")
-                    module = getattr(config.bot.command_book, 'module', None) if getattr(config.bot, 'command_book', None) else None
-                    if module and hasattr(module, 'Key'):
-                        Key = module.Key
-                        if getattr(Key, 'ORIGIN', None) and getattr(Key, 'ASCENT', None):
-                            time.sleep(7)
-                            press(Key.ORIGIN, 3)
-                            time.sleep(5)
-                            press(Key.ASCENT, 3)
-                            print("Origin and Ascent used.")
+                try:
+                    elite = utils.multi_match_gray(interrupting_message_gray, ELITE_TEMPLATE, threshold=0.9)
+                    if len(elite) > 0:
+                        print("Elite Boss Detected - using Origin then Ascent.")
+                        module = getattr(config.bot.command_book, 'module', None) if getattr(config.bot, 'command_book', None) else None
+                        if module and hasattr(module, 'Key'):
+                            Key = module.Key
+                            if getattr(Key, 'ORIGIN', None) and getattr(Key, 'ASCENT', None):
+                                time.sleep(7)
+                                press(Key.ORIGIN, 3)
+                                time.sleep(5)
+                                press(Key.ASCENT, 3)
+                                print("Origin and Ascent used.")
+                            else:
+                                print("Command book has no ORIGIN/ASCENT keys.")
                         else:
-                            print("Command book has no ORIGIN/ASCENT keys.")
-                    else:
-                        print("No command book loaded for Origin/Ascent.")
+                            print("No command book loaded for Origin/Ascent.")
+                except Exception as e:
+                    print(f"[!] Error in elite detection: {e}")
+                    # 释放内存
+                    import gc
+                    gc.collect()
 
                 # Check for other players entering the map
-                filtered = utils.filter_color(minimap, OTHER_RANGES)
-                others = len(utils.multi_match(filtered, OTHER_TEMPLATE, threshold=0.5))
-                config.stage_fright = others > 0
-                if others != prev_others:
-                    if others > prev_others:
-                        self._ping('ding')
-                    prev_others = others
+                try:
+                    filtered = utils.filter_color(minimap, OTHER_RANGES)
+                    others = len(utils.multi_match(filtered, OTHER_TEMPLATE, threshold=0.5))
+                    config.stage_fright = others > 0
+                    if others != prev_others:
+                        if others > prev_others:
+                            self._ping('ding')
+                        prev_others = others
+                except Exception as e:
+                    print(f"[!] Error in other players detection: {e}")
 
                 # Check for rune
-                now = time.time()
-                if not config.bot.rune_active:
-                    filtered = utils.filter_color(minimap, RUNE_RANGES)
-                    matches = utils.multi_match(filtered, RUNE_TEMPLATE, threshold=0.9)
-                    rune_start_time = now
-                    if matches and config.routine.sequence:
-                        abs_rune_pos = (matches[0][0], matches[0][1])
-                        config.bot.rune_pos = utils.convert_to_relative(abs_rune_pos, minimap)
-                        distances = list(map(distance_to_rune, config.routine.sequence))
-                        index = np.argmin(distances)
-                        config.bot.rune_closest_pos = config.routine[index].location
-                        config.bot.rune_active = True
-                        self._ping('rune_appeared', volume=0.75)
+                try:
+                    now = time.time()
+                    if not config.bot.rune_active:
+                        filtered = utils.filter_color(minimap, RUNE_RANGES)
+                        matches = utils.multi_match(filtered, RUNE_TEMPLATE, threshold=0.9)
+                        rune_start_time = now
+                        if matches and config.routine.sequence:
+                            abs_rune_pos = (matches[0][0], matches[0][1])
+                            config.bot.rune_pos = utils.convert_to_relative(abs_rune_pos, minimap)
+                            distances = list(map(distance_to_rune, config.routine.sequence))
+                            index = np.argmin(distances)
+                            config.bot.rune_closest_pos = config.routine[index].location
+                            config.bot.rune_active = True
+                            self._ping('rune_appeared', volume=0.75)
+                except Exception as e:
+                    print(f"[!] Error in rune detection: {e}")
                 # elif now - rune_start_time > self.rune_alert_delay:     # Alert if rune hasn't been solved
                 #     config.bot.rune_active = False
                 #     self._alert('siren')
-            time.sleep(0.05)
+                
+                # 释放内存
+                try:
+                    del interrupting_message_gray
+                    del minimap
+                    import gc
+                    gc.collect()
+                except:
+                    pass
+                
+            # 增加循环间隔，减少内存使用
+            time.sleep(0.075)  # 从0.05秒增加到0.075秒，减少处理频率
 
     def _alert(self, name, volume=0.75):
         """
