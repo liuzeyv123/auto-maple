@@ -260,6 +260,7 @@ class Bot(Configurable):
                 time.sleep(1)
                 
                 # 检查符文buff是否出现，确认符文已被成功解决
+                buff_found = False
                 for _ in range(3):
                     time.sleep(0.3)
                     frame = config.capture.frame
@@ -280,6 +281,11 @@ class Bot(Configurable):
                         # 重置尝试次数
                         attempts = 0
                         solution_found = True
+                        buff_found = True
+                        break
+                # 如果没有找到buff，不标记为成功
+                if not buff_found:
+                    solution_found = False
                 # 标记符文为非活动状态
                 self.rune_active = False
                 break

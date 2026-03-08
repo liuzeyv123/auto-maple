@@ -290,20 +290,13 @@ def enter_cash_shop():
     重复发送 F5 直到检测到商城图像。
     """
     import cv2
-    from src.modules.capture import Capture
+    import src.common.config as config
     
     # 加载商城图片模板
     shop_template = cv2.imread('assets/shop.png', 0)
     if shop_template is None:
         print("错误: 无法加载商城图片模板 assets/shop.png")
         return
-    
-    # 初始化捕获对象
-    capture = Capture()
-    capture.start()
-    
-    # 等待捕获对象初始化
-    time.sleep(3)
     
     print("开始尝试进入商城，持续按 F5 直到检测到商城界面...")
     
@@ -317,9 +310,9 @@ def enter_cash_shop():
         time.sleep(0.5)
         
         # 检查是否捕获到帧
-        if hasattr(capture, 'frame') and capture.frame is not None:
+        if hasattr(config, 'capture') and hasattr(config.capture, 'frame') and config.capture.frame is not None:
             # 尝试匹配商城图片
-            matches = multi_match(capture.frame, shop_template, threshold=0.8)
+            matches = multi_match(config.capture.frame, shop_template, threshold=0.8)
             if matches:
                 print("检测到商城界面，停止按 F5")
                 break

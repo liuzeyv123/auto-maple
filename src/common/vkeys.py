@@ -192,11 +192,17 @@ def key_down(key):
             module = config.bot.command_book.module
             print_press_msg = getattr(module, 'PRINT_PRESS_MSG', False)
         
+        # 随机延迟
+        time.sleep(0.05 + 0.1 * random())
+        
         if print_press_msg:
             print(f"Key down: '{key}'")
         
         x = Input(type=INPUT_KEYBOARD, ki=KeyboardInput(wVk=KEY_MAP[key]))
         user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
+        
+        # 随机延迟
+        time.sleep(0.05 + 0.1 * random())
 
 
 def key_up(key):
@@ -218,11 +224,17 @@ def key_up(key):
             module = config.bot.command_book.module
             print_press_msg = getattr(module, 'PRINT_PRESS_MSG', False)
         
+        # 随机延迟
+        time.sleep(0.05 + 0.1 * random())
+        
         if print_press_msg:
             print(f"Key up: '{key}'")
         
         x = Input(type=INPUT_KEYBOARD, ki=KeyboardInput(wVk=KEY_MAP[key], dwFlags=KEYEVENTF_KEYUP))
         user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
+        
+        # 随机延迟
+        time.sleep(0.05 + 0.1 * random())
 
 
 @run_if_enabled
@@ -255,12 +267,31 @@ def click(position, button='left'):
     if button not in ['left', 'right']:
         print(f"'{button}' is not a valid mouse button.")
     else:
+        # 随机延迟
+        time.sleep(0.05 + 0.1 * random())
+        
         if button == 'left':
             down_event = win32con.MOUSEEVENTF_LEFTDOWN
             up_event = win32con.MOUSEEVENTF_LEFTUP
         else:
             down_event = win32con.MOUSEEVENTF_RIGHTDOWN
             up_event = win32con.MOUSEEVENTF_RIGHTUP
-        win32api.SetCursorPos(position)
-        win32api.mouse_event(down_event, position[0], position[1], 0, 0)
-        win32api.mouse_event(up_event, position[0], position[1], 0, 0)
+        
+        # 鼠标移动到位置时添加随机偏移
+        offset_x = int((random() - 0.5) * 3)
+        offset_y = int((random() - 0.5) * 3)
+        target_position = (position[0] + offset_x, position[1] + offset_y)
+        win32api.SetCursorPos(target_position)
+        
+        # 随机延迟
+        time.sleep(0.05 + 0.1 * random())
+        
+        win32api.mouse_event(down_event, target_position[0], target_position[1], 0, 0)
+        
+        # 随机延迟
+        time.sleep(0.05 + 0.1 * random())
+        
+        win32api.mouse_event(up_event, target_position[0], target_position[1], 0, 0)
+        
+        # 随机延迟
+        time.sleep(0.05 + 0.1 * random())
