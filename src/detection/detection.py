@@ -72,10 +72,8 @@ class ArrowPredictionClient:
         self.client = None
 
     def _get_loop(self):
+        # 复用同一事件循环，减少重启开销。
         if self.loop is None or self.loop.is_closed():
-            # 关闭旧循环（如果存在）
-            if self.loop is not None and not self.loop.is_closed():
-                self.loop.close()
             self.loop = asyncio.new_event_loop()
             asyncio.set_event_loop(self.loop)
         return self.loop
@@ -166,16 +164,16 @@ class ArrowPredictionClient:
         """关闭HTTP客户端和事件循环，释放资源"""
         # 关闭HTTP客户端
         if self.client is not None:
-            # 使用异步方式关闭客户端
             if self.loop is not None and not self.loop.is_closed():
                 self.loop.run_until_complete(self.client.aclose())
             else:
                 # 如果循环已关闭，创建临时循环来关闭客户端
                 temp_loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(temp_loop)
                 temp_loop.run_until_complete(self.client.aclose())
                 temp_loop.close()
             self.client = None
-        
+
         # 关闭事件循环
         if self.loop is not None and not self.loop.is_closed():
             self.loop.close()
