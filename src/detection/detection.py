@@ -49,7 +49,7 @@ def _frame_to_base64_jpeg(frame: np.ndarray, vertical_offset: int = 50) -> str:
     if img_cropped.mode != "RGB":
         img_cropped = img_cropped.convert("RGB")
     buf = io.BytesIO()
-    img_cropped.save(buf, format="JPEG", quality=95)
+    img_cropped.save(buf, format="JPEG", quality=90)  # 降低质量以提高速度
     return base64.b64encode(buf.getvalue()).decode("utf-8")
 
 
@@ -80,7 +80,11 @@ class ArrowPredictionClient:
 
     async def _get_client(self):
         if self.client is None:
-            self.client = httpx.AsyncClient(timeout=30.0)
+            # 增加连接池大小，提高并发性能
+            self.client = httpx.AsyncClient(
+                timeout=30.0,
+                limits=httpx.Limits(max_connections=10, max_keepalive_connections=5)
+            )
         return self.client
 
     def _request_headers(self) -> dict:
@@ -91,6 +95,24 @@ class ArrowPredictionClient:
             "x-rapidapi-host": host,
             "x-rapidapi-key": self.proxy_secret,
         }
+
+    async def _make_api_request(self, image_base64: str) -> list[str] | None:
+        """通用API请求方法，减少代码重复"""
+        try:
+            client = await self._get_client()
+            payload = {"image": image_base64}
+            response = await client.post(
+                self.api_url, json=payload, headers=self._request_headers()
+            )
+
+            if response.status_code == 200:
+                data = response.json()
+                return data["solution"] if isinstance(data, dict) and "solution" in data else data
+            print(f"[Rune solver] API error {response.status_code}: {response.text}")
+            return None
+        except Exception as e:
+            print(f"[Rune solver] Request failed: {e}")
+            return None
 
     async def _predict_async(self, image_path: str, vertical_offset: int = 50) -> list[str] | None:
         if not os.path.exists(image_path):
@@ -107,22 +129,12 @@ class ArrowPredictionClient:
                 img_cropped = img_cropped.convert("RGB")
 
             img_bytes = io.BytesIO()
-            img_cropped.save(img_bytes, format="JPEG", quality=95)
+            img_cropped.save(img_bytes, format="JPEG", quality=90)  # 降低质量以提高速度
             image_base64 = base64.b64encode(img_bytes.getvalue()).decode("utf-8")
 
-            client = await self._get_client()
-            payload = {"image": image_base64}
-            response = await client.post(
-                self.api_url, json=payload, headers=self._request_headers()
-            )
-
-            if response.status_code == 200:
-                data = response.json()
-                return data["solution"] if isinstance(data, dict) and "solution" in data else data
-            print(f"[Rune solver] API error {response.status_code}: {response.text}")
-            return None
+            return await self._make_api_request(image_base64)
         except Exception as e:
-            print(f"[Rune solver] Request failed: {e}")
+            print(f"[Rune solver] Prediction failed: {e}")
             return None
 
     def predict(self, image_path: str, vertical_offset: int = 50) -> list[str] | None:
@@ -134,18 +146,9 @@ class ArrowPredictionClient:
     ) -> list[str] | None:
         try:
             image_base64 = _frame_to_base64_jpeg(frame, vertical_offset=vertical_offset)
-            client = await self._get_client()
-            payload = {"image": image_base64}
-            response = await client.post(
-                self.api_url, json=payload, headers=self._request_headers()
-            )
-            if response.status_code == 200:
-                data = response.json()
-                return data["solution"] if isinstance(data, dict) and "solution" in data else data
-            print(f"[Rune solver] API error {response.status_code}: {response.text}")
-            return None
+            return await self._make_api_request(image_base64)
         except Exception as e:
-            print(f"[Rune solver] Request failed: {e}")
+            print(f"[Rune solver] Frame prediction failed: {e}")
             return None
 
     def predict_from_frame(
@@ -178,3 +181,12 @@ class ArrowPredictionClient:
         if self.loop is not None and not self.loop.is_closed():
             self.loop.close()
             self.loop = None
+
+    def __enter__(self):
+        """支持上下文管理器协议"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """退出上下文管理器时关闭资源"""
+        self.close()
+        return False
