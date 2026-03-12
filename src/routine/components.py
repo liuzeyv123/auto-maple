@@ -406,7 +406,7 @@ class Move(Command):
                             key = 'up'
                         else:
                             key = 'down'
-                        # 永远不要按住'up'键 - step函数只使用绳索提升，不使用上+跳
+                        # 无闪现职业永远不要按住'up'键向上移动，以免卡绳索 - step函数只使用绳索提升，不使用上+跳
                         if key == 'up':
                             if self.prev_direction:
                                 key_up(self.prev_direction)  # 释放之前的方向键
