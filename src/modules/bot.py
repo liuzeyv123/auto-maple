@@ -246,8 +246,7 @@ class Bot(Configurable):
                 print('找到解决方案，输入结果')
                 # 执行箭头键序列
                 for arrow in solution:
-                    press(arrow, 1, down_time=0.1)
-                time.sleep(0.2)     
+                    press(arrow, 1, down_time=0.1)    
                 # 检查符文buff是否出现，确认符文已被成功解决
                 buff_found = False
                 for _ in range(3):
