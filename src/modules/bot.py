@@ -21,6 +21,14 @@ from src.common.interfaces import Configurable
 # 符文的 buff 图标，改为彩色读取，单独匹配彩色模板
 RUNE_BUFF_TEMPLATE = cv2.imread('assets/rune_buff_template.jpg', 1)
 
+# 符文 buff 图标的 HSV 颜色范围（根据实际蓝色图标调整）
+# HSV 范围格式：[(low_h, low_s, low_v), (high_h, high_s, high_v)]
+# 扩大蓝色范围，匹配深浅不同的蓝色，但不匹配灰色（S>70确保是彩色）
+RUNE_BUFF_HSV_RANGE = [
+    (85, 70, 30),   # 低阈值：H扩大，S适中，V降低（深色）
+    (150, 255, 255) # 高阈值：H扩大，S最大，V最大（浅色）
+]
+
 # 符文检测失败时保存帧的文件夹（项目根目录）
 FAILED_DETECTIONS_FOLDER = "failed_detections"
 attempts = 0
@@ -140,30 +148,31 @@ class Bot(Configurable):
                         print(f'[!] buff/喂食逻辑错误: {e}')
                         time.sleep(1)  # 出错后暂停1秒
 
-                    # 位置监控：如果玩家3秒未移动则执行跳跃（增加时间阈值）
+                    # 位置监控：如果玩家3秒未移动则执行跳跃（仅在执行Adjust或Step时触发）
                     try:
-                        current_pos = config.player_pos  # 获取当前玩家位置
-                        if current_pos != (0, 0):  # 仅当位置有效时
-                            distance = utils.distance(current_pos, self.last_position)  # 计算与上次位置的距离
-                            if distance > settings.move_tolerance:  # 如果移动距离超过容差
-                                # 玩家已移动，更新上次位置和时间
-                                self.last_position = current_pos
-                                self.position_time = now
-                            elif now - self.position_time > 3:  # 如果玩家3秒未移动（增加时间阈值）
-                                # 玩家3秒未移动，执行跳跃
-                                print('[~] 玩家3秒未移动，执行跳跃')
-                                # 随机选择左右方向
-                                direction = random.choice(['left', 'right'])
-                                # 按下方向键并跳跃
-                                key_down(direction)
-                                time.sleep(0.05)  # 减少延迟
-                                # 使用命令书中Key类的跳跃键
-                                jump_key = getattr(self.command_book.module.Key, 'JUMP', 'c')
-                                press(jump_key, 1)  # 减少跳跃次数
-                                key_up(direction)  # 释放方向键
-                                time.sleep(0.3)  # 减少延迟
-                                # 跳跃后更新位置时间
-                                self.position_time = now
+                        if config.executing_movement:
+                            current_pos = config.player_pos  # 获取当前玩家位置
+                            if current_pos != (0, 0):  # 仅当位置有效时
+                                distance = utils.distance(current_pos, self.last_position)  # 计算与上次位置的距离
+                                if distance > settings.adjust_tolerance:  # 如果移动距离超过精确容差
+                                    # 玩家已移动，更新上次位置和时间
+                                    self.last_position = current_pos
+                                    self.position_time = now
+                                elif now - self.position_time > 3:  # 如果玩家3秒未移动
+                                    # 玩家3秒未移动，执行跳跃
+                                    print('[~] 玩家3秒未移动，执行跳跃')
+                                    # 随机选择左右方向
+                                    direction = random.choice(['left', 'right'])
+                                    # 按下方向键并跳跃
+                                    key_down(direction)
+                                    time.sleep(0.05)  # 减少延迟
+                                    # 使用命令书中Key类的跳跃键
+                                    jump_key = getattr(self.command_book.module.Key, 'JUMP', 'c')
+                                    press(jump_key, 1)  # 减少跳跃次数
+                                    key_up(direction)  # 释放方向键
+                                    time.sleep(0.3)  # 减少延迟
+                                    # 跳跃后更新位置时间
+                                    self.position_time = now
                     except Exception as e:
                         print(f'[!] 位置监控错误: {e}')
                         time.sleep(1)  # 出错后暂停1秒
@@ -225,6 +234,7 @@ class Bot(Configurable):
         time.sleep(0.4)
         
         # 按交互键开始解符文
+        time.sleep(1)
         press(self.config['Interact'], 1, down_time=0.2)        # 继承自Configurable
 
         print('\n正在解决符文:')
@@ -252,10 +262,11 @@ class Bot(Configurable):
                 for _ in range(3):
                     time.sleep(0.5)
                     frame = config.capture.frame
-                    # 在屏幕顶部区域查找符文buff图标（启用彩色匹配）
-                    rune_buff = utils.multi_match_color(frame[:frame.shape[0] // 8, :],
-                                                       RUNE_BUFF_TEMPLATE,
-                                                       threshold=0.7)
+                    # 直接进行彩色模板匹配（兼容任何颜色的模板，同时匹配颜色和图案）
+                    search_region = frame[:frame.shape[0] // 8, :]
+                    
+                    # 提高阈值，减少误匹配（只匹配颜色和图案都非常相似的）
+                    rune_buff = utils.multi_match_color(search_region, RUNE_BUFF_TEMPLATE, threshold=0.88)
                     if rune_buff:
                         # 重置尝试次数
                         print(f"检测到{len(rune_buff)}个符文buff，确认解符文成功")

@@ -87,7 +87,7 @@ def reset():
 
     global move_tolerance, adjust_tolerance, record_layout, buff_cooldown
     global skill_rotation_mode, skill_rotation_duration
-    move_tolerance = 0.07
+    move_tolerance = 0.1
     adjust_tolerance = 0.02
     record_layout = False
     buff_cooldown = 180
@@ -96,7 +96,7 @@ def reset():
 
 
 # 向 Point 移动时与目标的允许误差
-move_tolerance = 0.07
+move_tolerance = 0.1
 
 # 调整到特定位置时与该位置的允许误差
 adjust_tolerance = 0.02

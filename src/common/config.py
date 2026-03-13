@@ -25,6 +25,9 @@ path = []
 # 用户选择的小地图路径（文件 > 加载小地图）。设置后，自动例程使用此路径而不是 OCR。
 selected_minimap_path = None
 
+# 跟踪当前是否正在执行 Adjust 或 Step 命令
+executing_movement = False
+
 
 #############################
 #       共享模块      #
