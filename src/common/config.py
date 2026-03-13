@@ -28,6 +28,10 @@ selected_minimap_path = None
 # 跟踪当前是否正在执行 Adjust 或 Step 命令
 executing_movement = False
 
+#components.py的 _try_skill_during_move 函数使用的技能释放相关变量
+last_skill_time = 0  # 上次技能释放时间
+skill_cooldown = 3.0  # 技能释放的最小间隔（秒）
+
 
 #############################
 #       共享模块      #

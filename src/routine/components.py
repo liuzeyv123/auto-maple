@@ -236,6 +236,11 @@ def _try_skill_during_move():
     如果当前命令书有 SKILL_COOLDOWNS 配置，则使用一个随机的冷却完毕的技能
     使用与 SkillRotation 相同的 CooldownTracker，确保冷却时间同步
     """
+    # 检查是否在技能释放冷却期内
+    current_time = time.time()
+    if current_time - config.last_skill_time < config.skill_cooldown:
+        return
+    
     # 导入冷却追踪器
     from src.routine.cooldown_tracker import CooldownTracker
     # 获取当前职业的模块
@@ -276,6 +281,8 @@ def _try_skill_during_move():
     press(actual_key, press_count, down_time=0.05, up_time=0.05)
     # 记录技能使用时间（更新冷却时间）
     tracker.record_used(skill_id)
+    # 更新上次技能释放时间
+    config.last_skill_time = current_time
     # 短暂延迟，确保操作流畅
     time.sleep(0.1)
 
@@ -298,7 +305,7 @@ class Move(Command):
         
     def _check_and_perform_main_attack(self, direction):
         """
-        检查是否需要执行主要攻击
+        检查是否需要执行主要攻击,非跳a且为点按主攻的角色会有用(例如kanna)
         当 Jump_Attack_TYPE = False 且 MAIN_ATTACK_TYPE = 'tap' 时，每2秒进行2次主要攻击
         """
         # 获取当前职业模块
