@@ -236,11 +236,6 @@ def _try_skill_during_move():
     如果当前命令书有 SKILL_COOLDOWNS 配置，则使用一个随机的冷却完毕的技能
     使用与 SkillRotation 相同的 CooldownTracker，确保冷却时间同步
     """
-    # 检查是否在技能释放冷却期内
-    current_time = time.time()
-    if current_time - config.last_skill_time < config.skill_cooldown:
-        return
-    
     # 导入冷却追踪器
     from src.routine.cooldown_tracker import CooldownTracker
     # 获取当前职业的模块
@@ -250,6 +245,13 @@ def _try_skill_during_move():
     # 如果没有冷却配置，直接返回
     if cooldowns is None:
         return
+    
+    # 检查上次技能释放时间，限制间隔为3秒
+    last_skill_time = getattr(config.bot, 'last_skill_time', 0)
+    current_time = time.time()
+    if current_time - last_skill_time < 3:
+        return
+    
     # 获取或创建冷却追踪器
     tracker = getattr(config.bot, 'cooldown_tracker', None)
     # 如果追踪器不存在或冷却配置已更改，创建新的追踪器
@@ -282,7 +284,7 @@ def _try_skill_during_move():
     # 记录技能使用时间（更新冷却时间）
     tracker.record_used(skill_id)
     # 更新上次技能释放时间
-    config.last_skill_time = current_time
+    setattr(config.bot, 'last_skill_time', current_time)
     # 短暂延迟，确保操作流畅
     time.sleep(0.1)
 
