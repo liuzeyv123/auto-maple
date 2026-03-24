@@ -11,6 +11,7 @@ import psutil
 from PIL import Image
 from datetime import datetime
 from src.common import config, settings, utils
+from src.common.logger import info, warning, error, critical
 from src.detection.detection import ArrowPredictionClient, crop_to_640x640
 from src.routine import components
 from src.routine.routine import Routine
@@ -228,7 +229,7 @@ class Bot(Configurable):
                         print(f'[~] 垃圾回收: 处理了 {len(gc.garbage)} 个循环引用对象')
                     gc_counter = 0
             except Exception as e:
-                print(f'[!] 主bot循环中的严重错误: {e}')
+                critical(f'主bot循环中的严重错误: {e}')
                 import traceback
                 traceback.print_exc()
                 # 暂停以允许恢复
@@ -258,13 +259,13 @@ class Bot(Configurable):
             # 使用图像匹配检测死亡画面
             matches = utils.multi_match(frame, DEAD_TEMPLATE, threshold=0.8)
             if matches:
-                print('[!] 检测到死亡画面，关闭 MapleStory 客户端...')
+                critical('检测到死亡画面，关闭 MapleStory 客户端...')
                 import os
                 os.system('taskkill /f /im "MapleStory.exe"')
                 # 也关闭当前进程
                 os.system(f'taskkill /f /pid {os.getpid()}')
         except Exception as e:
-            print(f'[!] 死亡检测错误: {e}')
+            error(f'死亡检测错误: {e}')
 
     @utils.run_if_enabled
     def _solve_rune(self):
@@ -353,12 +354,18 @@ class Bot(Configurable):
         # 增加尝试次数
         attempts += 1
         
+        # 当连续失败超过3次时记录日志
+        if attempts > 3:
+            warning(f'符文解密连续失败 {attempts} 次')
+        
         # 如果尝试次数超过9次，标记符文为非活动状态
         if attempts > 9:
+            error('符文解密尝试次数超过9次，标记为非活动状态')
             self.rune_active = False
         
         # 如果尝试次数超过10次，关闭游戏进程和当前进程
         if attempts > 10:
+            critical('符文解密尝试次数超过10次，关闭游戏进程')
             os.system('taskkill /f /im "MapleStory.exe"')  # 强制关闭MapleStory进程
             os.system(f'taskkill /f /pid {os.getpid()}')  # 强制关闭当前进程
 
