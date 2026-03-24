@@ -158,6 +158,18 @@ class Bot(Configurable):
 
                     # 位置监控：如果玩家3秒未移动则执行跳跃（增加时间阈值）
                     try:
+                        # 检查当前是否正在执行移动相关命令（Move、Adjust或包含step的命令）
+                        is_moving_command = False
+                        if hasattr(config.routine, 'index') and 0 <= config.routine.index < len(config.routine):
+                            element = config.routine[config.routine.index]
+                            if hasattr(element, 'commands'):
+                                for command in element.commands:
+                                    if hasattr(command, 'id'):
+                                        # 检查是否为移动相关命令
+                                        if command.id in ['Move', 'Adjust'] or 'step' in command.id.lower():
+                                            is_moving_command = True
+                                            break
+                        
                         current_pos = config.player_pos  # 获取当前玩家位置
                         if current_pos != (0, 0):  # 仅当位置有效时
                             distance = utils.distance(current_pos, self.last_position)  # 计算与上次位置的距离
@@ -165,7 +177,7 @@ class Bot(Configurable):
                                 # 玩家已移动，更新上次位置和时间
                                 self.last_position = current_pos
                                 self.position_time = now
-                            elif now - self.position_time > 3:  # 如果玩家3秒未移动（增加时间阈值）
+                            elif now - self.position_time > 3 and is_moving_command:  # 如果玩家3秒未移动（增加时间阈值）且正在执行移动相关命令
                                 # 玩家3秒未移动，执行跳跃
                                 print('[~] 玩家3秒未移动，执行跳跃')
                                 # 随机选择左右方向
