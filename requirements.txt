@@ -1,0 +1,11 @@
+GitPython
+httpx
+keyboard
+mss
+numpy
+opencv-python-headless
+Pillow
+pygame
+pywin32
+python-dotenv
+pytesseract

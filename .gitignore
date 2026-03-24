@@ -1,0 +1,7 @@
+__pycache__/
+assets/models/
+.idea/
+.settings/
+*.iml
+failed_detections/
+.env

@@ -1,0 +1,518 @@
+"""一个读取并执行用户创建的例程的解释器。"""
+
+import os
+import re
+import threading
+import time
+import random
+import git
+import cv2
+import psutil
+from PIL import Image
+from datetime import datetime
+from src.common import config, settings, utils
+from src.detection.detection import ArrowPredictionClient, crop_to_640x640
+from src.routine import components
+from src.routine.routine import Routine
+from src.command_book.command_book import CommandBook
+from src.routine.components import Point
+from src.common.vkeys import press, click, key_down, key_up
+from src.common.interfaces import Configurable
+
+
+# 符文的 buff 图标
+RUNE_BUFF_TEMPLATE = cv2.imread('assets/rune_buff_template.jpg', 0)
+
+# 死亡检测模板
+DEAD_TEMPLATE = cv2.imread('assets/dead.png', 0)
+
+# 符文检测失败时保存帧的文件夹（项目根目录）
+FAILED_DETECTIONS_FOLDER = "failed_detections"
+attempts = 0
+
+class Bot(Configurable):
+    """一个解释和执行用户定义例程的类。"""
+
+    DEFAULT_CONFIG = {
+        'Interact': 'y',
+        'Feed pet': '9',
+        'Item buff 1': 'b',
+        'Item buff 2': 'n',
+        'Item buff 3': 'm',
+        'Item buff 4': ',',
+        'Familiar pot': '.',
+    }
+
+    def __init__(self):
+        """在启动时加载用户定义的例程并初始化此 Bot 的主线程。"""
+
+        super().__init__('keybindings')
+        config.bot = self
+
+        self.rune_active = False
+        self.rune_pos = (0, 0)
+        self.rune_closest_pos = (0, 0)      # 最接近符文的点的位置
+        self.submodules = []
+        self.command_book = None            # CommandBook 实例
+        self.prediction_client = ArrowPredictionClient()
+
+        config.routine = Routine()
+
+        self.ready = False
+        self.thread = threading.Thread(target=self._main)
+        self.thread.daemon = True
+        
+        # 位置监控变量
+        self.last_position = (0, 0)
+        self.position_time = time.time()
+
+    def start(self):
+        """
+        启动此 Bot 对象的线程。
+        :return:    None
+        """
+
+        self.update_submodules()
+        print('\n[~] 启动主 bot 循环')
+        self.thread.start()
+
+    def _main(self):
+        """
+        Bot的主函数，负责执行用户的例程。
+        :return:    None
+        """
+
+        print('\n[~] 无内置检测算法，已卸载到服务器')
+
+        # 记录启动时间用于内存监控（24h+稳定运行）
+        self._start_time = time.time()
+
+        # 初始化状态
+        self.ready = True  # 设置Bot为就绪状态
+        config.listener.enabled = True  # 启用监听器
+        last_fed = time.time()  # 记录上次喂食宠物的时间
+        # 物品 buff 1-4：立即激活（last_used=0）。宠物：等待完整间隔。
+        last_item_buff = {1: 0.0, 2: 0.0, 3: 0.0, 4: 0.0}  # 记录各物品buff的上次使用时间
+        last_familiar_buff = time.time()  # 记录宠物buff的上次使用时间
+        gc_counter = 0  # 周期性垃圾收集的计数器
+
+        # MapleStory 内存监控
+        last_mem_check = time.time()  # 上次内存检查时间
+        mem_log_file = 'maplestory_memory.txt'  # 内存日志文件
+
+        while True:
+            try:
+                now = time.time()  # 当前时间（移到外层，确保始终有定义）
+
+                # 自动例程：当有实时小地图时，从地图匹配解析路径点
+                if config.enabled and self.command_book is not None and getattr(config.routine, 'auto_mode', False) and len(config.routine) == 0:
+                    config.routine.resolve_auto_routine(
+                        skill_rotation_duration=getattr(settings, 'skill_rotation_duration', 5.0),  # 技能轮转持续时间
+                        move_tolerance=getattr(settings, 'move_tolerance', 0.075),  # 移动容差
+                    )
+                    time.sleep(0.5)  # 短暂延迟
+                    continue
+
+                # 当Bot启用且例程不为空且命令书已加载时
+                if config.enabled and len(config.routine) > 0 and self.command_book is not None:
+                    
+                    # 增益buff和喂食宠物
+                    try:
+                        # 减少buff执行频率，每2帧执行一次
+                        if gc_counter % 2 == 0:
+                            self.command_book.buff.main()  # 执行命令书中的buff方法
+                            # 死亡检测
+                            self._check_dead()
+                            pet_settings = config.gui.settings.pets  # 获取宠物设置
+                            auto_feed = pet_settings.auto_feed.get()  # 获取是否自动喂食
+                            num_pets = pet_settings.num_pets.get()  # 获取宠物数量
+                            
+                            # 自动喂食宠物
+                            if auto_feed and now - last_fed > 1200 / num_pets:
+                                press(self.config['Feed pet'], 1)  # 按下喂食宠物的按键
+                                last_fed = now  # 更新上次喂食时间
+                            
+                            # 处理物品buff
+                            ib = getattr(getattr(getattr(config, 'gui', None), 'settings', None), 'item_buffs', None)
+                            ib = ib.settings if ib else None
+                            if ib:
+                                # 处理1-4号物品buff
+                                for i in range(1, 5):
+                                    interval = ib.get(f'Item buff {i}')  # 获取buff间隔
+                                    # 如果间隔大于0且（首次使用或已超过间隔时间）
+                                    if interval > 0 and (last_item_buff[i] == 0 or now - last_item_buff[i] >= interval):
+                                        press(self.config[f'Item buff {i}'], 1)  # 按下物品buff按键
+                                        time.sleep(1)  # 等待1秒（减少等待时间）
+                                        last_item_buff[i] = now  # 更新上次使用时间
+                                
+                                # 处理宠物药水
+                                fam_interval = ib.get('Familiar pot')  # 获取宠物药水间隔
+                                if fam_interval > 0 and now - last_familiar_buff >= fam_interval:
+                                    press(self.config['Familiar pot'], 1)  # 按下宠物药水按键
+                                    time.sleep(1)  # 等待1秒（减少等待时间）
+                                    last_familiar_buff = now  # 更新上次使用时间
+                    except Exception as e:
+                        print(f'[!] buff/喂食逻辑错误: {e}')
+                        time.sleep(1)  # 出错后暂停1秒
+
+                    # 位置监控：如果玩家3秒未移动则执行跳跃（增加时间阈值）
+                    try:
+                        current_pos = config.player_pos  # 获取当前玩家位置
+                        if current_pos != (0, 0):  # 仅当位置有效时
+                            distance = utils.distance(current_pos, self.last_position)  # 计算与上次位置的距离
+                            if distance > settings.move_tolerance:  # 如果移动距离超过容差
+                                # 玩家已移动，更新上次位置和时间
+                                self.last_position = current_pos
+                                self.position_time = now
+                            elif now - self.position_time > 3:  # 如果玩家3秒未移动（增加时间阈值）
+                                # 玩家3秒未移动，执行跳跃
+                                print('[~] 玩家3秒未移动，执行跳跃')
+                                # 随机选择左右方向
+                                direction = random.choice(['left', 'right'])
+                                # 按下方向键并跳跃
+                                key_down(direction)
+                                time.sleep(0.05)  # 减少延迟
+                                # 使用命令书中Key类的跳跃键
+                                jump_key = getattr(self.command_book.module.Key, 'JUMP', 'c')
+                                press(jump_key, 1)  # 减少跳跃次数
+                                key_up(direction)  # 释放方向键
+                                time.sleep(0.3)  # 减少延迟
+                                # 跳跃后更新位置时间
+                                self.position_time = now
+                    except Exception as e:
+                        print(f'[!] 位置监控错误: {e}')
+                        time.sleep(1)  # 出错后暂停1秒
+                    # 执行例程中的下一个点
+                    try:
+                        element = config.routine[config.routine.index]
+                        if self.rune_active and isinstance(element, Point) \
+                                and element.location == self.rune_closest_pos:
+                            self._solve_rune()
+                        element.execute()
+                        config.routine.step()
+                    except Exception as e:
+                        print(f'[!] 例程执行错误: {e}')
+                        time.sleep(1)
+                else:
+                    time.sleep(0.3)  # 空闲时延迟更长，进一步降低 MapleStory 压力
+
+                # 每约100次迭代进行一次垃圾回收以帮助释放内存（24h+稳定运行）
+                gc_counter += 1
+
+                # 内存监控：每10分钟检查一次 MapleStory 内存
+                if now - last_mem_check >= 600:  # 600秒 = 10分钟
+                    try:
+                        self._check_maplestory_memory(mem_log_file)
+                        last_mem_check = now
+                    except Exception as e:
+                        print(f'[!] MapleStory 内存检查错误: {e}')
+
+                # 内存监控：每1000次循环检查一次（约20分钟）- auto-maple 自身内存
+                if gc_counter % 1000 == 0:
+                    try:
+                        process = psutil.Process(os.getpid())
+                        mem_mb = process.memory_info().rss / 1024 / 1024
+                        elapsed = (time.time() - self._start_time) / 3600 if hasattr(self, '_start_time') else 0
+                        print(f'[~] Auto Maple 内存: {mem_mb:.1f} MB, 已运行 {elapsed:.1f}h')
+                        # 释放process对象
+                        del process
+                    except:
+                        pass
+
+                if gc_counter >= 100:  # 更频繁GC（24h+稳定运行）
+                    import gc
+                    # 强制垃圾回收，确保内存及时释放
+                    gc.collect()
+                    # 显式调用gc.garbage来处理循环引用
+                    if hasattr(gc, 'garbage') and gc.garbage:
+                        print(f'[~] 垃圾回收: 处理了 {len(gc.garbage)} 个循环引用对象')
+                    gc_counter = 0
+            except Exception as e:
+                print(f'[!] 主bot循环中的严重错误: {e}')
+                import traceback
+                traceback.print_exc()
+                # 暂停以允许恢复
+                time.sleep(5)
+                # 严重错误后强制进行垃圾回收
+                import gc
+                gc.collect()
+                # 尝试重新校准小地图
+                try:
+                    config.capture.calibrated = False
+                except:
+                    pass
+
+    def _check_dead(self):
+        """
+        检测是否死亡，如果检测到死亡画面则关闭 MapleStory 客户端。
+        """
+        try:
+            if DEAD_TEMPLATE is None:
+                return
+
+            # 获取当前游戏画面
+            frame = config.capture.frame
+            if frame is None:
+                return
+
+            # 使用图像匹配检测死亡画面
+            matches = utils.multi_match(frame, DEAD_TEMPLATE, threshold=0.8)
+            if matches:
+                print('[!] 检测到死亡画面，关闭 MapleStory 客户端...')
+                import os
+                os.system('taskkill /f /im "MapleStory.exe"')
+                # 也关闭当前进程
+                os.system(f'taskkill /f /pid {os.getpid()}')
+        except Exception as e:
+            print(f'[!] 死亡检测错误: {e}')
+
+    @utils.run_if_enabled
+    def _solve_rune(self):
+        """
+        移动到符文位置并解决箭头键谜题。
+        使用箭头预测API (环境变量: ARROW_API_URL, PROXY_SECRET)。
+        :return:    None
+        """
+        global attempts
+        print("尝试次数: ", str(attempts))
+        
+        # 获取移动和调整命令
+        move = self.command_book['move']
+        # 移动到符文位置
+        move(*self.rune_pos).execute()
+        
+        adjust = self.command_book['adjust']
+        # 调整视角到符文位置
+        adjust(*self.rune_pos).execute()
+        time.sleep(0.4)
+        adjust(*self.rune_pos).execute()
+        time.sleep(0.4)
+        
+        # 按交互键开始解符文
+        press(self.config['Interact'], 1, down_time=0.2)        # 继承自Configurable
+
+        print('\n正在解决符文:')
+        solution_found = False
+        frame = None
+        rune_frame = None
+        
+        # 尝试3次识别符文
+        for i in range(3):
+            # 获取当前游戏画面
+            rune_frame = config.capture.frame
+            # 使用预测API获取符文解决方案
+            solution = self.prediction_client.predict_from_frame(rune_frame)
+
+            print(f"解决方案 {i}: {solution}")
+            # 检查解决方案是否有效（必须是4个箭头的序列）
+            if solution and len(solution) == 4:
+                print(', '.join(solution))
+                print('找到解决方案，输入结果')
+                # 执行箭头键序列
+                for arrow in solution:
+                    press(arrow, 1, down_time=0.1) 
+                # 检查符文buff是否出现，确认符文已被成功解决
+                buff_found = False
+                for _ in range(3):
+                    time.sleep(0.5)
+                    frame = config.capture.frame
+                    # 在屏幕顶部区域查找符文buff图标
+                    rune_buff = utils.multi_match(frame[:frame.shape[0] // 8, :],
+                                                 RUNE_BUFF_TEMPLATE,
+                                                 threshold=0.7)
+                    if rune_buff and len(rune_buff) >= 2:
+                        # 重置尝试次数
+                        print(f"检测到{len(rune_buff)}个符文buff，确认解符文成功")
+                        attempts = 0
+                        solution_found = True
+                        buff_found = True
+                        break
+                # 如果没有找到足够的buff，不标记为成功
+                if not buff_found:
+                    print("未检测到足够的符文buff，可能解符文失败")
+                    solution_found = False
+                # 标记符文为非活动状态
+                self.rune_active = False
+                break
+        
+        # 如果没有找到解决方案且有原始帧，保存失败的检测
+        if not solution_found and frame is not None:
+            self._save_failed_detection(frame)
+        
+        # 如果没有找到解决方案且有符文帧，保存失败的检测并重置符文状态
+        # if not solution_found and rune_frame is not None:
+        if not solution_found:
+            print("检测到符文失败，尝试进入商城...")
+            # self._save_failed_detection(rune_frame)
+            utils.enter_cash_shop()  # 进入现金商店以重置状态
+            print("已尝试进入商城")
+            self.rune_active = False  # 标记符文为非活动状态
+            utils.exit_cash_shop()  # 退出现金商店
+            print("已退出商城")
+        
+        # 增加尝试次数
+        attempts += 1
+        
+        # 如果尝试次数超过9次，标记符文为非活动状态
+        if attempts > 9:
+            self.rune_active = False
+        
+        # 如果尝试次数超过10次，关闭游戏进程和当前进程
+        if attempts > 10:
+            os.system('taskkill /f /im "MapleStory.exe"')  # 强制关闭MapleStory进程
+            os.system(f'taskkill /f /pid {os.getpid()}')  # 强制关闭当前进程
+
+    def _get_next_failed_image_number(self):
+        """
+        返回失败检测图像的下一个序号。
+        扫描现有的 image_1.png, image_2.png, ... 使编号在重启后保持连续。
+        """
+        os.makedirs(FAILED_DETECTIONS_FOLDER, exist_ok=True)
+        max_num = 0
+        for name in os.listdir(FAILED_DETECTIONS_FOLDER):
+            m = re.match(r'image_(\d+)\.png', name, re.IGNORECASE)
+            if m:
+                max_num = max(max_num, int(m.group(1)))
+        return max_num + 1
+
+    def _save_failed_detection(self, frame, vertical_offset: int = 50):
+        """当符文检测失败时，将帧保存到 failed_detections/image_N.png。裁剪为 640x640，与检测时相同。"""
+        try:
+            os.makedirs(FAILED_DETECTIONS_FOLDER, exist_ok=True)
+            next_num = self._get_next_failed_image_number()
+            failed_image_path = os.path.join(FAILED_DETECTIONS_FOLDER, f'image_{next_num}.png')
+            if frame.ndim == 3 and frame.shape[2] == 4:
+                rgb = frame[..., :3][..., ::-1].copy()
+            else:
+                rgb = frame[..., ::-1].copy()
+            img = Image.fromarray(rgb)
+            img_cropped = crop_to_640x640(img, vertical_offset=vertical_offset)
+            img_cropped.save(failed_image_path)
+            print(f"已将失败检测保存到 {failed_image_path}")
+        except Exception as e:
+            print(f"保存失败检测时出错: {e}")
+
+    def load_commands(self, file):
+        try:
+            self.command_book = CommandBook(file)
+            config.gui.settings.update_class_bindings()
+        except ValueError:
+            pass    # TODO: UI警告弹窗，提示检查命令文件错误
+
+    def update_submodules(self, force=False):
+        """
+        从子模块仓库拉取更新。如果 FORCE 为 True，
+        通过覆盖所有本地更改来重建子模块。
+        优先使用本地模块，避免网络问题导致启动失败。
+        """
+
+        utils.print_separator()
+        print('[~] 获取最新子模块:')
+        self.submodules = []
+        try:
+            repo = git.Repo.init()
+            with open('.gitmodules', 'r') as file:
+                lines = file.readlines()
+                i = 0
+                while i < len(lines):
+                    if lines[i].startswith('[') and i < len(lines) - 2:
+                        path = lines[i + 1].split('=')[1].strip()
+                        url = lines[i + 2].split('=')[1].strip()
+                        self.submodules.append(path)
+                        
+                        # 优先检查本地是否存在该模块
+                        if os.path.exists(path) and os.path.isdir(path):
+                            print(f" -  本地模块 '{path}' 已存在，优先使用")
+                        else:
+                            try:
+                                repo.git.clone(url, path)       # 首次加载子模块
+                                print(f" -  初始化子模块 '{path}'")
+                            except git.exc.GitCommandError:
+                                try:
+                                    sub_repo = git.Repo(path)
+                                    if not force:
+                                        sub_repo.git.stash()        # 保存修改的内容
+                                    sub_repo.git.fetch('origin', 'main')
+                                    sub_repo.git.reset('--hard', 'FETCH_HEAD')
+                                    if not force:
+                                        try:                # 恢复修改的内容
+                                            sub_repo.git.checkout('stash', '--', '.')
+                                            print(f" -  更新子模块 '{path}'，恢复本地更改")
+                                        except git.exc.GitCommandError:
+                                            print(f" -  更新子模块 '{path}'")
+                                    else:
+                                        print(f" -  重建子模块 '{path}'")
+                                    sub_repo.git.stash('clear')
+                                except Exception as e:
+                                    print(f" -  子模块 '{path}' 更新失败: {e}")
+                                    print(" -  继续运行，使用本地现有子模块")
+                        i += 3
+                    else:
+                        i += 1
+        except Exception as e:
+            print(f"[!] 子模块更新失败: {e}")
+            print("[~] 继续运行，使用本地现有子模块")
+
+    def _check_maplestory_memory(self, log_file):
+        """
+        检查 MapleStory 进程的内存使用情况并记录到日志文件。
+
+        Args:
+            log_file: 日志文件路径
+        """
+        # 查找 MapleStory 进程
+        maple_pid = None
+        for proc in psutil.process_iter(['pid', 'name']):
+            try:
+                if 'maplestory' in proc.info['name'].lower():
+                    maple_pid = proc.info['pid']
+                    break
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+
+        if maple_pid is None:
+            print('[~] 未找到 MapleStory 进程，跳过内存检查')
+            return
+
+        try:
+            p = psutil.Process(maple_pid)
+            mem_info = p.memory_info()
+
+            # 计算各项内存指标
+            commit_mb = mem_info.vms / 1024 / 1024  # 虚拟内存（提交）
+            working_set_mb = mem_info.rss / 1024 / 1024  # 物理内存（工作集）
+            private_mb = mem_info.private / 1024 / 1024  # 专用内存
+
+            # 计算比例
+            ratio = commit_mb / working_set_mb if working_set_mb > 0 else 0
+
+            # 获取当前时间
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            # 构建日志行
+            log_line = f"{timestamp} | PID: {maple_pid} | Commit: {commit_mb:.1f} MB | WorkingSet: {working_set_mb:.1f} MB | Private: {private_mb:.1f} MB | Ratio: {ratio:.1f}x\n"
+
+            # 写入日志文件
+            with open(log_file, 'a', encoding='utf-8') as f:
+                f.write(log_line)
+
+            # 输出到控制台
+            print(f'[~] MapleStory 内存检查: Commit={commit_mb:.1f}MB, WorkingSet={working_set_mb:.1f}MB, Ratio={ratio:.1f}x')
+
+            # 警告检查
+            if commit_mb > 5000:  # 5 GB
+                print(f'[!] 警告: MapleStory 提交内存超过 5 GB ({commit_mb:.1f} MB)')
+            if ratio > 3:
+                print(f'[!] 警告: MapleStory 提交/工作集比例异常 ({ratio:.1f}x)')
+
+        except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+            print(f'[!] 无法访问 MapleStory 进程: {e}')
+        except Exception as e:
+            print(f'[!] MapleStory 内存检查错误: {e}')
+
+    def close(self):
+        """关闭资源，释放内存"""
+        # 关闭ArrowPredictionClient
+        if hasattr(self, 'prediction_client') and self.prediction_client is not None:
+            self.prediction_client.close()
+            self.prediction_client = None
