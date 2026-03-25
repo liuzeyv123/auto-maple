@@ -122,8 +122,6 @@ class Bot(Configurable):
                         # 减少buff执行频率，每2帧执行一次
                         if gc_counter % 2 == 0:
                             self.command_book.buff.main()  # 执行命令书中的buff方法
-                            # 死亡检测
-                            self._check_dead()
                             pet_settings = config.gui.settings.pets  # 获取宠物设置
                             auto_feed = pet_settings.auto_feed.get()  # 获取是否自动喂食
                             num_pets = pet_settings.num_pets.get()  # 获取宠物数量
@@ -255,36 +253,7 @@ class Bot(Configurable):
                 except:
                     pass
 
-    def _check_dead(self):
-        """
-        检测是否死亡，如果检测到死亡画面则停止 auto-maple 运行。
-        只在屏幕中央 3/4 区域进行查找。
-        """
-        try:
-            if DEAD_TEMPLATE is None:
-                return
 
-            # 获取当前游戏画面
-            frame = config.capture.frame
-            if frame is None:
-                return
-
-            # 裁剪屏幕中央 3/4 区域
-            h, w = frame.shape[:2]
-            # 计算 3/4 区域的边界（从 1/8 到 7/8）
-            top = int(h * 1 / 8)
-            bottom = int(h * 7 / 8)
-            left = int(w * 1 / 8)
-            right = int(w * 7 / 8)
-            center_frame = frame[top:bottom, left:right]
-
-            # 在中央区域使用图像匹配检测死亡画面
-            matches = utils.multi_match(center_frame, DEAD_TEMPLATE, threshold=0.8)
-            if matches:
-                critical('检测到死亡画面，停止 auto-maple 运行...')
-                config.enabled = False
-        except Exception as e:
-            error(f'死亡检测错误: {e}')
 
     @utils.run_if_enabled
     def _solve_rune(self):

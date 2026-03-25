@@ -56,6 +56,10 @@ SKULL_DEATH_SKULL_TEMPLATE = cv2.imread('assets/skull_death_skull.png', 0)
 # 测谎仪
 LIE_DETECTOR_TEMPLATE = cv2.imread('assets/lie_detector.png', 0)
 
+# 死亡画面
+DEAD_TEMPLATE = cv2.imread('assets/dead.png', 0)
+
+
 def get_alert_path(name):
     return os.path.join(Notifier.ALERTS_DIR, f'{name}.mp3')
 
@@ -119,6 +123,24 @@ class Notifier:
 
                     # 限制模板匹配的频率，每2帧执行一次
                     if gc_counter % 2 == 0:
+                        # 检查死亡画面（最高优先级，不播放音频）
+                        try:
+                            if DEAD_TEMPLATE is not None:
+                                # 裁剪屏幕中央 3/4 区域（从 1/8 到 7/8）
+                                h, w = interrupting_message_gray.shape[:2]
+                                top = int(h * 1 / 8)
+                                bottom = int(h * 7 / 8)
+                                left = int(w * 1 / 8)
+                                right = int(w * 7 / 8)
+                                center_frame = interrupting_message_gray[top:bottom, left:right]
+
+                                dead = utils.multi_match_gray(center_frame, DEAD_TEMPLATE, threshold=0.8)
+                                if len(dead) > 0:
+                                    print("检测到死亡画面，停止 auto-maple 运行...")
+                                    config.enabled = False
+                        except Exception as e:
+                            print(f"[!] 死亡检测错误: {e}")
+
                         # 检查 Pollo 消息
                         try:
                             pollo = utils.multi_match_gray(interrupting_message_gray, POLLO_TEMPLATE, threshold=0.9)
