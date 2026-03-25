@@ -5,3 +5,5 @@ assets/models/
 *.iml
 failed_detections/
 .env
+logs/
+maplestory_memory.txt

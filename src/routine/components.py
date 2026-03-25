@@ -236,6 +236,7 @@ def _try_skill_during_move():
     如果当前命令书有 SKILL_COOLDOWNS 配置，则使用一个随机的冷却完毕的技能
     使用与 SkillRotation 相同的 CooldownTracker，确保冷却时间同步
     最小间隔3秒，避免技能使用过于频繁
+    支持根据爆发状态使用依赖爆发的技能（仅对定义了 DEPENDENT_SKILLS 的职业生效）
     """
     # 检查是否满足最小时间间隔（3秒）
     last_skill_time = getattr(config.bot, '_last_move_skill_time', 0)
@@ -252,6 +253,7 @@ def _try_skill_during_move():
     # 如果没有冷却配置，直接返回
     if cooldowns is None:
         return
+    
     # 获取或创建冷却追踪器
     tracker = getattr(config.bot, 'cooldown_tracker', None)
     # 如果追踪器不存在或冷却配置已更改，创建新的追踪器
@@ -259,6 +261,7 @@ def _try_skill_during_move():
         tracker = CooldownTracker(cooldowns)
         tracker._cooldowns_ref = cooldowns
         setattr(config.bot, 'cooldown_tracker', tracker)
+    
     # 筛选出有冷却时间的技能（冷却时间大于0）
     skill_ids = [k for k, cd in cooldowns.items() if cd > 0]
     # 排除黑名单中的技能
@@ -269,8 +272,70 @@ def _try_skill_during_move():
     # 如果没有可用技能，直接返回
     if not available:
         return
-    # 随机选择一个可用技能
-    skill_id = random.choice(available)
+    
+    # 获取依赖爆发的技能配置（如果模块有定义）
+    dependent_skills = getattr(module, 'DEPENDENT_SKILLS', {})
+    
+    # 如果有依赖爆发技能配置，检查爆发状态并过滤技能
+    if dependent_skills:
+        # 检测爆发状态
+        burst_elapsed = 0
+        is_burst2 = False
+        
+        try:
+            # 尝试从 Buff 类获取爆发状态
+            if hasattr(config.bot, 'command_book') and hasattr(config.bot.command_book, 'buff'):
+                buff_instance = config.bot.command_book.buff
+                if hasattr(buff_instance, 'buff_times'):
+                    # 获取 Key 类
+                    key_class = getattr(module, 'Key', None)
+                    if key_class:
+                        # 检查爆发2是否激活（优先）
+                        if hasattr(key_class, '爆发2'):
+                            burst2_time = buff_instance.buff_times.get(getattr(key_class, '爆发2'), 0)
+                            if burst2_time > 0 and current_time - burst2_time <= 60:
+                                burst_elapsed = current_time - burst2_time
+                                is_burst2 = True
+                        # 如果爆发2未激活，检查爆发1
+                        if burst_elapsed == 0 and hasattr(key_class, '爆发1'):
+                            burst1_time = buff_instance.buff_times.get(getattr(key_class, '爆发1'), 0)
+                            if burst1_time > 0 and current_time - burst1_time <= 60:
+                                burst_elapsed = current_time - burst1_time
+                                is_burst2 = False
+        except Exception:
+            pass  # 如果无法获取爆发状态，继续执行
+        
+        # 根据爆发状态过滤技能
+        available_burst = []   # 依赖爆发且当前可用的技能
+        available_normal = []  # 不依赖爆发的技能
+        
+        for skill_id in available:
+            # 检查技能是否依赖爆发
+            if skill_id in dependent_skills:
+                burst1_window, burst2_window = dependent_skills[skill_id]
+                # 如果有爆发激活
+                if burst_elapsed > 0:
+                    window_time = burst2_window if is_burst2 else burst1_window
+                    # 窗口时间为0表示不依赖爆发，可以在任何爆发期间使用
+                    if window_time == 0:
+                        available_normal.append(skill_id)
+                    elif burst_elapsed <= window_time:
+                        available_burst.append(skill_id)
+            else:
+                # 不依赖爆发的技能
+                available_normal.append(skill_id)
+        
+        # 优先使用依赖爆发的技能（如果有）
+        if available_burst:
+            skill_id = random.choice(available_burst)
+        elif available_normal:
+            skill_id = random.choice(available_normal)
+        else:
+            return  # 没有可用技能
+    else:
+        # 没有依赖爆发技能配置，使用原来的简单逻辑
+        skill_id = random.choice(available)
+    
     # 默认为1次按键
     press_count = 1
     # 如果模块有技能按键次数配置，使用配置的值
