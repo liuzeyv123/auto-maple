@@ -245,7 +245,8 @@ class Bot(Configurable):
 
     def _check_dead(self):
         """
-        检测是否死亡，如果检测到死亡画面则关闭 MapleStory 客户端。
+        检测是否死亡，如果检测到死亡画面则停止 auto-maple 运行。
+        只在屏幕中央 3/4 区域进行查找。
         """
         try:
             if DEAD_TEMPLATE is None:
@@ -256,14 +257,20 @@ class Bot(Configurable):
             if frame is None:
                 return
 
-            # 使用图像匹配检测死亡画面
-            matches = utils.multi_match(frame, DEAD_TEMPLATE, threshold=0.8)
+            # 裁剪屏幕中央 3/4 区域
+            h, w = frame.shape[:2]
+            # 计算 3/4 区域的边界（从 1/8 到 7/8）
+            top = int(h * 1 / 8)
+            bottom = int(h * 7 / 8)
+            left = int(w * 1 / 8)
+            right = int(w * 7 / 8)
+            center_frame = frame[top:bottom, left:right]
+
+            # 在中央区域使用图像匹配检测死亡画面
+            matches = utils.multi_match(center_frame, DEAD_TEMPLATE, threshold=0.8)
             if matches:
-                critical('检测到死亡画面，关闭 MapleStory 客户端...')
-                import os
-                os.system('taskkill /f /im "MapleStory.exe"')
-                # 也关闭当前进程
-                os.system(f'taskkill /f /pid {os.getpid()}')
+                critical('检测到死亡画面，停止 auto-maple 运行...')
+                config.enabled = False
         except Exception as e:
             error(f'死亡检测错误: {e}')
 
