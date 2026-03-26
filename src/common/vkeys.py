@@ -8,6 +8,24 @@ from src.common.decorators import run_if_enabled
 from ctypes import wintypes
 from random import random
 
+# 配置输入模式：'default' | 'raw' | 'enhanced'
+INPUT_MODE = 'enhanced'  # 修改此处以切换输入模式
+
+# Raw Input 模块（如果启用 raw 或 enhanced 模式）
+if INPUT_MODE in ['raw', 'enhanced']:
+    try:
+        from src.common.raw_input import (
+            key_down_raw, key_up_raw,
+            key_down_enhanced, key_up_enhanced,
+            press_enhanced
+        )
+        RAW_INPUT_AVAILABLE = True
+    except ImportError:
+        RAW_INPUT_AVAILABLE = False
+        print("警告: raw_input 模块未找到，使用默认输入模式")
+else:
+    RAW_INPUT_AVAILABLE = False
+
 
 user32 = ctypes.WinDLL('user32', use_last_error=True)
 
@@ -177,6 +195,11 @@ user32.SendInput.argtypes = (wintypes.UINT, LPINPUT, ctypes.c_int)
 def key_down(key):
     """
     Simulates a key-down action. Can be cancelled by Bot.toggle_enabled.
+    根据 INPUT_MODE 配置使用不同的输入方法：
+    - 'default': 标准虚拟键码（可被检测）
+    - 'raw': 扫描码（较难检测）
+    - 'enhanced': 增强扫描码+时间戳+随机化（最难检测）
+    
     :param key:     The key to press.
     :return:        None
     """
@@ -192,23 +215,34 @@ def key_down(key):
             module = config.bot.command_book.module
             print_press_msg = getattr(module, 'PRINT_PRESS_MSG', False)
         
-        # 随机延迟
-        time.sleep(0.005 + 0.01 * random())
+        vk_code = KEY_MAP[key]
         
-        if print_press_msg:
-            print(f"Key down: '{key}'")
-        
-        x = Input(type=INPUT_KEYBOARD, ki=KeyboardInput(wVk=KEY_MAP[key]))
-        user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
-        
-        # 随机延迟
-        time.sleep(0.005 + 0.01 * random())
+        # 根据 INPUT_MODE 选择输入方法
+        if INPUT_MODE == 'enhanced' and RAW_INPUT_AVAILABLE:
+            # 增强模式：扫描码 + 时间戳 + 高级随机化
+            key_down_enhanced(key, vk_code)
+        elif INPUT_MODE == 'raw' and RAW_INPUT_AVAILABLE:
+            # Raw 模式：使用扫描码
+            key_down_raw(key, vk_code)
+        else:
+            # 默认模式：标准虚拟键码
+            time.sleep(0.005 + 0.01 * random())
+            
+            if print_press_msg:
+                print(f"Key down: '{key}'")
+            
+            x = Input(type=INPUT_KEYBOARD, ki=KeyboardInput(wVk=vk_code))
+            user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
+            
+            time.sleep(0.005 + 0.01 * random())
 
 
 def key_up(key):
     """
     Simulates a key-up action. Cannot be cancelled by Bot.toggle_enabled.
     This is to ensure no keys are left in the 'down' state when the program pauses.
+    根据 INPUT_MODE 配置使用不同的输入方法。
+    
     :param key:     The key to press.
     :return:        None
     """
@@ -224,23 +258,34 @@ def key_up(key):
             module = config.bot.command_book.module
             print_press_msg = getattr(module, 'PRINT_PRESS_MSG', False)
         
-        # 随机延迟
-        time.sleep(0.005 + 0.01 * random())
+        vk_code = KEY_MAP[key]
         
-        if print_press_msg:
-            print(f"Key up: '{key}'")
-        
-        x = Input(type=INPUT_KEYBOARD, ki=KeyboardInput(wVk=KEY_MAP[key], dwFlags=KEYEVENTF_KEYUP))
-        user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
-        
-        # 随机延迟
-        time.sleep(0.005 + 0.01 * random())
+        # 根据 INPUT_MODE 选择输入方法
+        if INPUT_MODE == 'enhanced' and RAW_INPUT_AVAILABLE:
+            # 增强模式
+            key_up_enhanced(key, vk_code)
+        elif INPUT_MODE == 'raw' and RAW_INPUT_AVAILABLE:
+            # Raw 模式
+            key_up_raw(key, vk_code)
+        else:
+            # 默认模式
+            time.sleep(0.005 + 0.01 * random())
+            
+            if print_press_msg:
+                print(f"Key up: '{key}'")
+            
+            x = Input(type=INPUT_KEYBOARD, ki=KeyboardInput(wVk=vk_code, dwFlags=KEYEVENTF_KEYUP))
+            user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
+            
+            time.sleep(0.005 + 0.01 * random())
 
 
 @run_if_enabled
 def press(key, n, down_time=0.05, up_time=0.1):
     """
     Presses KEY N times, holding it for DOWN_TIME seconds, and releasing for UP_TIME seconds.
+    根据 INPUT_MODE 配置使用不同的输入方法。
+    
     :param key:         The keyboard input to press.
     :param n:           Number of times to press KEY.
     :param down_time:   Duration of down-press (in seconds).
@@ -255,11 +300,19 @@ def press(key, n, down_time=0.05, up_time=0.1):
         module = config.bot.command_book.module
         print_press_msg = getattr(module, 'PRINT_PRESS_MSG', False)
     
-    for _ in range(n):
-        key_down(key)
-        time.sleep(down_time * (0.8 + 0.4 * random()))
-        key_up(key)
-        time.sleep(up_time * (0.8 + 0.4 * random()))
+    # 根据 INPUT_MODE 选择输入方法
+    if INPUT_MODE == 'enhanced' and RAW_INPUT_AVAILABLE:
+        # 增强模式：使用 press_enhanced（已包含随机化）
+        vk_code = KEY_MAP.get(key.lower(), 0)
+        if vk_code:
+            press_enhanced(key, vk_code, down_time, up_time)
+    else:
+        # 默认或 Raw 模式
+        for _ in range(n):
+            key_down(key)
+            time.sleep(down_time * (0.8 + 0.4 * random()))
+            key_up(key)
+            time.sleep(up_time * (0.8 + 0.4 * random()))
     
     if print_press_msg:
         print(f"Pressed '{key}' {n} times")
