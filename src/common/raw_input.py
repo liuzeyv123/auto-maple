@@ -296,25 +296,3 @@ def is_extended_key(vk_code):
         bool: 是否为扩展键
     """
     return vk_code in [0x25, 0x26, 0x27, 0x28, 0x2A, 0x36]
-
-
-
-
-#################################
-#        Hook Functions        #
-#################################
-
-def clear_injected_flag():
-    """
-    尝试清除输入的注入标记（高级技术）。
-    
-    注意：这需要全局钩子，较为复杂，此处仅提供接口。
-    实际实现需要安装键盘钩子并修改 LLKHF_INJECTED 标志。
-    """
-    # 此功能需要更复杂的实现
-    # 包括：
-    # 1. 安装低级键盘钩子 (SetWindowsHookEx)
-    # 2. 修改钩子回调中的 LLKHF_INJECTED 标志
-    # 3. 卸载钩子
-    
-    pass
