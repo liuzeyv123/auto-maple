@@ -121,6 +121,17 @@ class Capture:
 
                 # 通过找到小地图的左上角和右下角来校准
                 if self._needs_recalibration or not self.calibrated:
+                    # 重新获取窗口位置，确保窗口移动后能正确校准
+                    rect = wintypes.RECT()
+                    user32.GetWindowRect(handle, ctypes.pointer(rect))
+                    rect = (rect.left, rect.top, rect.right, rect.bottom)
+                    rect = tuple(max(0, x) for x in rect)
+                    self.window['left'] = rect[0]
+                    self.window['top'] = rect[1]
+                    self.window['width'] = max(rect[2] - rect[0], MMT_WIDTH)
+                    self.window['height'] = max(rect[3] - rect[1], MMT_HEIGHT)
+                    self._window_validated = True
+
                     # 创建单个mss实例用于校准
                     sct = mss.mss()
                     try:
