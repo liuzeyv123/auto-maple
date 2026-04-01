@@ -356,7 +356,49 @@ def exit_cash_shop():
     print("已发送 Enter")
     press("enter", 1, down_time=0.4, up_time=0.4)
     time.sleep(5)
+    
+    # 在右上角1/8区域寻找商城退出按钮
+    import cv2
+    from src.common.vkeys import click
+    import src.common.config as config
+    
+    # 加载退出按钮模板
+    exit_template = cv2.imread('assets/shop_exit.png', 0)
+    if exit_template is not None:
+        # 获取当前游戏画面
+        frame = config.capture.frame
+        if frame is not None:
+            # 计算右上角1/8区域的坐标
+            height, width = frame.shape[:2]
+            region_x = width * 3 // 4  # 从3/4宽度开始
+            region_y = 0  # 从顶部开始
+            region_width = width // 4  # 宽度的1/4
+            region_height = height // 2  # 高度的1/2
+            
+            # 裁剪右上角区域
+            top_right_region = frame[region_y:region_y+region_height, region_x:region_x+region_width]
+            
+            # 在裁剪区域中寻找退出按钮
+            matches = multi_match(top_right_region, exit_template, threshold=0.8)
+            
+            if matches:
+                # 找到退出按钮，计算实际坐标并点击
+                match_x, match_y = matches[0]
+                # 转换为屏幕坐标
+                screen_x = region_x + match_x
+                screen_y = region_y + match_y
+                print(f"找到商城退出按钮，位置: ({screen_x}, {screen_y})")
+                # 点击退出按钮
+                click((screen_x, screen_y), 'left')
+                time.sleep(2)
+                print("已点击退出按钮")
+            else:
+                print("未找到商城退出按钮")
+    
     print("退出商城完成")
+
+
+
 
 
 def async_callback(context, function, *args, **kwargs):

@@ -132,15 +132,34 @@ class Bot(Configurable):
                                 last_fed = now  # 更新上次喂食时间
                             
                             # 处理物品buff
-                            ib = getattr(getattr(getattr(config, 'gui', None), 'settings', None), 'item_buffs', None)
-                            ib = ib.settings if ib else None
+                            gui = getattr(config, 'gui', None)
+                            gui_settings = getattr(gui, 'settings', None) if gui else None
+                            item_buffs = getattr(gui_settings, 'item_buffs', None) if gui_settings else None
+                            ib = item_buffs.settings if item_buffs else None
+                            
+                            # 调试信息
+                            if not gui:
+                                print('[!] config.gui 为 None')
+                            elif not gui_settings:
+                                print('[!] config.gui.settings 为 None')
+                            elif not item_buffs:
+                                print('[!] config.gui.settings.item_buffs 为 None')
+                            elif not ib:
+                                print('[!] item_buffs.settings 为 None')
+                            
+                            if ib:
+                                # 调试：打印item buff设置
+                                for i in range(1, 5):
+                                    interval = ib.get(f'Item buff {i}')
+                                    if interval > 0:
+                                        print(f'[~] Item buff {i} 间隔: {interval}秒, 上次使用: {last_item_buff[i]}, 当前时间: {now}')
                             if ib:
                                 # 处理1-4号物品buff
                                 for i in range(1, 5):
                                     interval = ib.get(f'Item buff {i}')  # 获取buff间隔
                                     # 如果间隔大于0且（首次使用或已超过间隔时间）
                                     if interval > 0 and (last_item_buff[i] == 0 or now - last_item_buff[i] >= interval):
-                                        press(self.config[f'Item buff {i}'], 1)  # 按下物品buff按键
+                                        press(self.config[f'Item buff {i}'], 1,down_time=0.5,up_time=0.5)  # 按下物品buff按键
                                         time.sleep(1)  # 等待1秒（减少等待时间）
                                         last_item_buff[i] = now  # 更新上次使用时间
                                 
@@ -171,7 +190,7 @@ class Bot(Configurable):
                         current_pos = config.player_pos  # 获取当前玩家位置
                         if current_pos != (0, 0):  # 仅当位置有效时
                             distance = utils.distance(current_pos, self.last_position)  # 计算与上次位置的距离
-                            if distance > settings.move_tolerance:  # 如果移动距离超过容差
+                            if distance > settings.move_tolerance:  # 如果移动距离超过容差（使用src.common.settings）
                                 # 玩家已移动，更新上次位置和时间
                                 self.last_position = current_pos
                                 self.position_time = now

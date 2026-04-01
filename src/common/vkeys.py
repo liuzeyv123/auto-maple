@@ -305,7 +305,8 @@ def press(key, n, down_time=0.05, up_time=0.1):
         # 增强模式：使用 press_enhanced（已包含随机化）
         vk_code = KEY_MAP.get(key.lower(), 0)
         if vk_code:
-            press_enhanced(key, vk_code, down_time, up_time)
+            for _ in range(n):
+                press_enhanced(key, vk_code, down_time, up_time)
     else:
         # 默认或 Raw 模式
         for _ in range(n):

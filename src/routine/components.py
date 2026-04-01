@@ -237,6 +237,7 @@ def _try_skill_during_move():
     使用与 SkillRotation 相同的 CooldownTracker，确保冷却时间同步
     最小间隔3秒，避免技能使用过于频繁
     支持根据爆发状态使用依赖爆发的技能（仅对定义了 DEPENDENT_SKILLS 的职业生效）
+    同时会检查并触发爆发技能（爆发1和爆发2）
     """
     # 检查是否满足最小时间间隔（3秒）
     last_skill_time = getattr(config.bot, '_last_move_skill_time', 0)
@@ -253,6 +254,48 @@ def _try_skill_during_move():
     # 如果没有冷却配置，直接返回
     if cooldowns is None:
         return
+    
+    # 尝试触发爆发技能（爆发1和爆发2）
+    try:
+        if hasattr(config.bot, 'command_book') and hasattr(config.bot.command_book, 'buff'):
+            buff_instance = config.bot.command_book.buff
+            if hasattr(buff_instance, 'buff_times') and hasattr(buff_instance, 'buff_config'):
+                key_class = getattr(module, 'Key', None)
+                if key_class and hasattr(key_class, '爆发1') and hasattr(key_class, '爆发2'):
+                    buff_times = buff_instance.buff_times
+                    now = current_time
+                    
+                    # 检查爆发2是否准备好（120秒CD）
+                    burst2_key = getattr(key_class, '爆发2')
+                    burst2_cd = buff_instance.buff_config.get(burst2_key, 120)
+                    burst2_last = buff_times.get(burst2_key, 0)
+                    burst2_ready = (burst2_last == 0 or now - burst2_last > burst2_cd)
+                    
+                    # 检查爆发1是否准备好（60秒CD）
+                    burst1_key = getattr(key_class, '爆发1')
+                    burst1_cd = buff_instance.buff_config.get(burst1_key, 60)
+                    burst1_last = buff_times.get(burst1_key, 0)
+                    burst1_ready = (burst1_last == 0 or now - burst1_last > burst1_cd)
+                    
+                    # 优先使用爆发2，如果爆发2准备好了
+                    if burst2_ready:
+                        print('[~] 移动中触发爆发2')
+                        press(burst2_key, 3, up_time=0.3)
+                        buff_times[burst2_key] = now
+                        # 更新技能使用时间，避免立即使用其他技能
+                        setattr(config.bot, '_last_move_skill_time', now)
+                        time.sleep(0.1)
+                    # 如果爆发2没准备好但爆发1准备好了，使用爆发1
+                    elif burst1_ready:
+                        print('[~] 移动中触发爆发1')
+                        press(burst1_key, 3, up_time=0.3)
+                        buff_times[burst1_key] = now
+                        # 更新技能使用时间，避免立即使用其他技能
+                        setattr(config.bot, '_last_move_skill_time', now)
+                        time.sleep(0.1)
+    except Exception as e:
+        # 如果爆发触发失败，继续执行普通技能逻辑
+        pass
     
     # 获取或创建冷却追踪器
     tracker = getattr(config.bot, 'cooldown_tracker', None)
@@ -423,46 +466,45 @@ class Move(Command):
             while config.enabled and counter > 0 and \
                     local_error > settings.move_tolerance and \
                     global_error > settings.move_tolerance:
-                if toggle:
-                    # 水平移动
-                    d_x = point[0] - config.player_pos[0]  # 计算x方向距离
-                    # 如果距离大于移动容差的对角线分量
-                    if abs(d_x) > settings.move_tolerance / math.sqrt(2):
-                        # 确定移动方向
-                        if d_x < 0:
-                            key = 'left'
-                        else:
-                            key = 'right'
-                        # 更新移动方向
-                        self._new_direction(key)
-                        # 30%概率在水平移动时跳跃，避免被梯子卡住
-                        if random.random() < 0.1:
-                            # 获取跳跃键（优先从命令书获取，否则使用默认值'space'）
-                            jump_key = getattr(
-                                getattr(getattr(config.bot, 'command_book', None), 'module', None), 'Key', None
-                            )
-                            jump_key = getattr(jump_key, 'JUMP', 'space') if jump_key else 'space'
-                            # 执行跳跃
-                            press(jump_key, 1, down_time=0.05, up_time=0.05)
-                            # 随机延迟
-                            time.sleep(utils.rand_float(0.05, 0.12))
-                        # 执行移动步骤
-                        step(key, point)
-                        # 如果启用布局记录，添加当前位置到布局
-                        if settings.record_layout:
-                            time.sleep(0.3)
-                            config.layout.add(*config.player_pos)
-                        # 减少剩余步数
-                        counter -= 1
-                        # 尝试在移动过程中使用技能
-                        _try_skill_during_move()
-                        # 检查是否需要执行主要攻击
-                        self._check_and_perform_main_attack(key)
-                        # 如果不是最后一个路径点，添加短暂延迟
-                        if i < len(path) - 1:
-                            time.sleep(0.15)
+                # 优先进行水平移动，直到X轴对准
+                d_x = point[0] - config.player_pos[0]  # 计算x方向距离
+                # 如果距离大于移动容差的对角线分量
+                if abs(d_x) > settings.move_tolerance / math.sqrt(2):
+                    # 确定移动方向
+                    if d_x < 0:
+                        key = 'left'
+                    else:
+                        key = 'right'
+                    # 更新移动方向
+                    self._new_direction(key)
+                    # 30%概率在水平移动时跳跃，避免被梯子卡住
+                    if random.random() < 0.1:
+                        # 获取跳跃键（优先从命令书获取，否则使用默认值'space'）
+                        jump_key = getattr(
+                            getattr(getattr(config.bot, 'command_book', None), 'module', None), 'Key', None
+                        )
+                        jump_key = getattr(jump_key, 'JUMP', 'space') if jump_key else 'space'
+                        # 执行跳跃
+                        press(jump_key, 1, down_time=0.05, up_time=0.05)
+                        # 随机延迟
+                        time.sleep(utils.rand_float(0.05, 0.12))
+                    # 执行移动步骤
+                    step(key, point)
+                    # 如果启用布局记录，添加当前位置到布局
+                    if settings.record_layout:
+                        time.sleep(0.3)
+                        config.layout.add(*config.player_pos)
+                    # 减少剩余步数
+                    counter -= 1
+                    # 尝试在移动过程中使用技能
+                    _try_skill_during_move()
+                    # 检查是否需要执行主要攻击
+                    self._check_and_perform_main_attack(key)
+                    # 如果不是最后一个路径点，添加短暂延迟
+                    if i < len(path) - 1:
+                        time.sleep(0.15)
                 else:
-                    # 垂直移动
+                    # X轴对准后，进行垂直移动
                     d_y = point[1] - config.player_pos[1]  # 计算y方向距离
                     # 如果距离大于移动容差的对角线分量
                     if abs(d_y) > settings.move_tolerance / math.sqrt(2):
@@ -495,8 +537,6 @@ class Move(Command):
                 # 更新距离值
                 local_error = utils.distance(config.player_pos, point)
                 global_error = utils.distance(config.player_pos, self.target)
-                # 切换移动模式（水平/垂直）
-                toggle = not toggle
             # 如果还有按下的方向键，释放它
             if self.prev_direction:
                 key_up(self.prev_direction)
