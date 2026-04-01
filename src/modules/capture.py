@@ -120,19 +120,11 @@ class Capture:
 
                 # 通过找到小地图的左上角和右下角来校准
                 try:
-                    # 重新获取窗口位置，确保窗口移动后能正确校准
-                    rect = wintypes.RECT()
-                    user32.GetWindowRect(handle, ctypes.pointer(rect))
-                    rect = (rect.left, rect.top, rect.right, rect.bottom)
-                    rect = tuple(max(0, x) for x in rect)
-                    self.window['left'] = rect[0]
-                    self.window['top'] = rect[1]
-                    self.window['width'] = max(rect[2] - rect[0], MMT_WIDTH)
-                    self.window['height'] = max(rect[3] - rect[1], MMT_HEIGHT)
-                    self._window_validated = True
-                    
-                    # 使用with上下文管理器确保mss资源正确释放
-                    with mss.mss() as sct:
+                    if not self._window_validated:
+                        self._window_validated = True  # 标记已验证，避免重复获取窗口信息
+                    # 创建单个mss实例用于校准
+                    sct = mss.mss()
+                    try:
                         # 直接使用sct对象，不赋值给self.sct
                         self.frame = self.screenshot_with_sct(sct)
                         if self.frame is None:
@@ -154,80 +146,83 @@ class Capture:
                         self.minimap_sample = self.frame[mm_tl[1]:mm_br[1], mm_tl[0]:mm_br[0]]
                         self.calibrated = True
                         print('[~] 小地图校准成功')
+                    finally:
+                        # 确保校准后立即释放mss资源
+                        sct.__exit__(None, None, None)
                 except Exception as e:
                     print(f'[!] 校准过程中出错: {e}')
                     time.sleep(2)
                     continue
 
-                # 使用with上下文管理器确保mss资源正确释放
-                with mss.mss() as sct:
-                    try:
-                        while True:
+                # 创建单个mss实例用于主循环
+                sct = mss.mss()
+                try:
+                    while True:
+                        if not self.calibrated:
+                            break
+
+                        try:
+                            # 截图
+                            self.frame = self.screenshot_with_sct(sct)
+                            if self.frame is None:
+                                continue
+
+                            # 裁剪帧以仅显示小地图（复制以便 GUI 线程
+                            # 不会持有对完整帧的引用并导致内存压力）。
+                            minimap = self.frame[mm_tl[1]:mm_br[1], mm_tl[0]:mm_br[0]].copy()
+
+                            # 确定玩家位置
+                            player = utils.multi_match(minimap, PLAYER_TEMPLATE, threshold=0.8)
+                            if player:
+                                config.player_pos = utils.convert_to_relative(player[0], minimap)
+                            else:
+                                # 如果未找到玩家，保持最后位置但不更新
+                                pass
+
+                            # 打包显示信息以供 GUI 轮询
+                            # 先获取旧的minimap引用，以便后续清理
+                            old_minimap = self.minimap.get('minimap') if hasattr(self, 'minimap') else None
+                            self.minimap = {
+                                'minimap': minimap,
+                                'rune_active': config.bot.rune_active,
+                                'rune_pos': config.bot.rune_pos,
+                                'path': config.path,
+                                'player_pos': config.player_pos
+                            }
+                            # 显式释放旧的minimap引用，帮助GC
+                            if old_minimap is not None:
+                                del old_minimap
+
+                            if not self.ready:
+                                self.ready = True
+
+                            # 每约50帧（50fps下约1秒）进行一次垃圾回收，以帮助
+                            # 在系统压力下释放内存（减少"无法分配"错误）。
+                            self._gc_counter += 1
+                            if self._gc_counter >= 30:  # 更频繁的GC以减少内存占用
+                                # 强制垃圾回收，确保内存及时释放
+                                gc.collect()
+                                # 显式调用gc.garbage来处理循环引用
+                                if hasattr(gc, 'garbage') and gc.garbage:
+                                    print(f'[~] 捕获模块垃圾回收: 处理了 {len(gc.garbage)} 个循环引用对象')
+                                self._gc_counter = 0
+
+                            # ~10 fps 平衡流畅度和内存压力
+                            time.sleep(0.1)
+                        except Exception as e:
+                            print(f'[!] 捕获循环中的错误: {e}')
+                            # 暂停并尝试恢复
+                            time.sleep(1)
+                            # 必要时尝试重新校准
                             if not self.calibrated:
                                 break
-
-                            try:
-                                # 截图
-                                self.frame = self.screenshot_with_sct(sct)
-                                if self.frame is None:
-                                    continue
-
-                                # 裁剪帧以仅显示小地图（复制以便 GUI 线程
-                                # 不会持有对完整帧的引用并导致内存压力）。
-                                minimap = self.frame[mm_tl[1]:mm_br[1], mm_tl[0]:mm_br[0]].copy()
-
-                                # 确定玩家位置
-                                player = utils.multi_match(minimap, PLAYER_TEMPLATE, threshold=0.8)
-                                if player:
-                                    config.player_pos = utils.convert_to_relative(player[0], minimap)
-                                else:
-                                    # 如果未找到玩家，保持最后位置但不更新
-                                    pass
-
-                                # 打包显示信息以供 GUI 轮询
-                                # 先获取旧的minimap引用，以便后续清理
-                                old_minimap = self.minimap.get('minimap') if hasattr(self, 'minimap') else None
-                                self.minimap = {
-                                    'minimap': minimap,
-                                    'rune_active': config.bot.rune_active,
-                                    'rune_pos': config.bot.rune_pos,
-                                    'path': config.path,
-                                    'player_pos': config.player_pos
-                                }
-                                # 显式释放旧的minimap引用，帮助GC
-                                if old_minimap is not None:
-                                    del old_minimap
-
-                                if not self.ready:
-                                    self.ready = True
-                                
-                                # 每约50帧（50fps下约1秒）进行一次垃圾回收，以帮助
-                                # 在系统压力下释放内存（减少"无法分配"错误）。
-                                self._gc_counter += 1
-                                if self._gc_counter >= 30:  # 更频繁的GC以减少内存占用
-                                    # 强制垃圾回收，确保内存及时释放
-                                    gc.collect()
-                                    # 显式调用gc.garbage来处理循环引用
-                                    if hasattr(gc, 'garbage') and gc.garbage:
-                                        print(f'[~] 捕获模块垃圾回收: 处理了 {len(gc.garbage)} 个循环引用对象')
-                                    self._gc_counter = 0
-                                
-                                # ~10 fps 平衡流畅度和内存压力
-                                time.sleep(0.1)
-                            except Exception as e:
-                                print(f'[!] 捕获循环中的错误: {e}')
-                                # 暂停并尝试恢复
-                                time.sleep(1)
-                                # 必要时尝试重新校准
-                                if not self.calibrated:
-                                    break
-                                # 出错后释放帧缓冲区
-                                if self._frame_buffer is not None:
-                                    self._frame_buffer = None
-                                    gc.collect()
-                    finally:
-                        # 确保在异常情况下释放 mss 资源
-                        self.sct = None
+                            # 出错后释放帧缓冲区
+                            if self._frame_buffer is not None:
+                                self._frame_buffer = None
+                                gc.collect()
+                finally:
+                    # 确保mss资源被释放
+                    sct.__exit__(None, None, None)
             except Exception as e:
                 print(f'[!] 捕获主循环中的严重错误: {e}')
                 import traceback
