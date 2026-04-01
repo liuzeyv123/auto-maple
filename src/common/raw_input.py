@@ -126,6 +126,20 @@ user32.SendInput.argtypes = (wintypes.UINT, LPINPUT, ctypes.c_int)
 #           Functions           #
 #################################
 
+# 全局：控制 SendInput 调用频率，防止句柄泄漏
+_last_sendinput_time = 0.0
+_MIN_SENDINPUT_INTERVAL = 0.01  # 最小 SendInput 调用间隔（秒）
+
+def _rate_limit_sendinput():
+    """限制 SendInput 调用频率，防止句柄泄漏"""
+    global _last_sendinput_time
+    current_time = time.time()
+    time_since_last = current_time - _last_sendinput_time
+    if time_since_last < _MIN_SENDINPUT_INTERVAL:
+        time.sleep(_MIN_SENDINPUT_INTERVAL - time_since_last)
+    _last_sendinput_time = time.time()
+
+
 def get_random_delay(min_delay=0.003, max_delay=0.012):
     """获取随机延迟，模拟真实人类操作的不确定性."""
     return min_delay + (max_delay - min_delay) * random()
@@ -156,7 +170,8 @@ def key_down_raw(key, vk_code):
             dwExtraInfo=0  # 模拟真实输入
         )
     )
-    
+
+    _rate_limit_sendinput()  # 限制频率
     user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
 
 
@@ -185,29 +200,30 @@ def key_up_raw(key, vk_code):
             dwExtraInfo=0  # 模拟真实输入
         )
     )
-    
+
+    _rate_limit_sendinput()  # 限制频率
     user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
 
 
 def key_down_enhanced(key, vk_code):
     """增强的按键按下模拟 - 结合多种技术提高隐蔽性.
-    
+
     1. 使用 scancode 而非虚拟键码
     2. 随机延迟
     3. 模拟真实输入的时间戳
     """
     time.sleep(get_random_delay())
-    
+
     # 获取 scancode
     scancode = VK_TO_SCANCODE.get(vk_code, 0)
-    
+
     flags = KEYEVENTF_SCANCODE
     if vk_code in [0x25, 0x26, 0x27, 0x28, 0x2A, 0x36]:
         flags |= KEYEVENTF_EXTENDEDKEY
-    
+
     # 获取当前系统时间作为时间戳（模拟真实输入）
     system_time = kernel32.GetTickCount()
-    
+
     x = Input(
         type=INPUT_KEYBOARD,
         ki=KeyboardInput(
@@ -218,7 +234,8 @@ def key_down_enhanced(key, vk_code):
             dwExtraInfo=0
         )
     )
-    
+
+    _rate_limit_sendinput()  # 限制频率
     user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
     time.sleep(get_random_delay())
 
@@ -226,15 +243,15 @@ def key_down_enhanced(key, vk_code):
 def key_up_enhanced(key, vk_code):
     """增强的按键释放模拟."""
     time.sleep(get_random_delay())
-    
+
     scancode = VK_TO_SCANCODE.get(vk_code, 0)
-    
+
     flags = KEYEVENTF_SCANCODE | KEYEVENTF_KEYUP
     if vk_code in [0x25, 0x26, 0x27, 0x28, 0x2A, 0x36]:
         flags |= KEYEVENTF_EXTENDEDKEY
-    
+
     system_time = kernel32.GetTickCount()
-    
+
     x = Input(
         type=INPUT_KEYBOARD,
         ki=KeyboardInput(
@@ -245,7 +262,8 @@ def key_up_enhanced(key, vk_code):
             dwExtraInfo=0
         )
     )
-    
+
+    _rate_limit_sendinput()  # 限制频率
     user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
     time.sleep(get_random_delay())
 
