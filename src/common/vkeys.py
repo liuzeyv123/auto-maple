@@ -29,6 +29,20 @@ else:
 
 user32 = ctypes.WinDLL('user32', use_last_error=True)
 
+# 默认模式下的 SendInput 频率控制
+_last_sendinput_time_default = 0.0
+_MIN_SENDINPUT_INTERVAL_DEFAULT = 0.01  # 默认模式最小间隔
+
+def _rate_limit_sendinput_default():
+    """限制 SendInput 调用频率，防止句柄泄漏"""
+    global _last_sendinput_time_default
+    current_time = time.time()
+    time_since_last = current_time - _last_sendinput_time_default
+    if time_since_last < _MIN_SENDINPUT_INTERVAL_DEFAULT:
+        time.sleep(_MIN_SENDINPUT_INTERVAL_DEFAULT - time_since_last)
+    _last_sendinput_time_default = time.time()
+
+
 INPUT_MOUSE = 0
 INPUT_KEYBOARD = 1
 INPUT_HARDWARE = 2
@@ -230,10 +244,11 @@ def key_down(key):
             
             if print_press_msg:
                 print(f"Key down: '{key}'")
-            
+
             x = Input(type=INPUT_KEYBOARD, ki=KeyboardInput(wVk=vk_code))
+            _rate_limit_sendinput_default()  # 限制频率
             user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
-            
+
             time.sleep(0.005 + 0.01 * random())
 
 
@@ -273,10 +288,11 @@ def key_up(key):
             
             if print_press_msg:
                 print(f"Key up: '{key}'")
-            
+
             x = Input(type=INPUT_KEYBOARD, ki=KeyboardInput(wVk=vk_code, dwFlags=KEYEVENTF_KEYUP))
+            _rate_limit_sendinput_default()  # 限制频率
             user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
-            
+
             time.sleep(0.005 + 0.01 * random())
 
 
