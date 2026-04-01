@@ -71,6 +71,7 @@ class Capture:
         self._gc_counter = 0  # 周期性垃圾回收的计数器
         self._window_validated = False  # 窗口信息验证标志，避免重复 GetWindowRect 调用
         self._window_check_counter = 0  # 窗口句柄检查计数器，大幅降低检查频率
+        self._needs_recalibration = True  # 首次启动需要校准
 
     def start(self):
         """启动此 Capture 的线程。"""
@@ -119,9 +120,7 @@ class Capture:
                     self._window_validated = True
 
                 # 通过找到小地图的左上角和右下角来校准
-                try:
-                    if not self._window_validated:
-                        self._window_validated = True  # 标记已验证，避免重复获取窗口信息
+                if self._needs_recalibration or not self.calibrated:
                     # 创建单个mss实例用于校准
                     sct = mss.mss()
                     try:
@@ -145,14 +144,15 @@ class Capture:
                         self.minimap_ratio = (mm_br[0] - mm_tl[0]) / (mm_br[1] - mm_tl[1])
                         self.minimap_sample = self.frame[mm_tl[1]:mm_br[1], mm_tl[0]:mm_br[0]]
                         self.calibrated = True
+                        self._needs_recalibration = False
                         print('[~] 小地图校准成功')
+                    except Exception as e:
+                        print(f'[!] 校准过程中出错: {e}')
+                        time.sleep(2)
+                        continue
                     finally:
                         # 确保校准后立即释放mss资源
                         sct.__exit__(None, None, None)
-                except Exception as e:
-                    print(f'[!] 校准过程中出错: {e}')
-                    time.sleep(2)
-                    continue
 
                 # 创建单个mss实例用于主循环
                 sct = mss.mss()
