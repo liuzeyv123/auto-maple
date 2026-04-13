@@ -26,6 +26,9 @@ class GUI:
         self.root.geometry(GUI.RESOLUTIONS['DEFAULT'])
         self.root.resizable(True, True)
 
+        # 处理窗口关闭事件
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
         # 初始化 GUI 变量
         self.routine_var = tk.StringVar()
 
@@ -45,6 +48,19 @@ class GUI:
 
         # 短暂延迟后恢复上一个会话（以便窗口显示）
         self.root.after(100, self._restore_session)
+
+    def _on_close(self):
+        """处理窗口关闭事件"""
+        import sys
+        print('\n[~] 正在关闭 Auto Maple...')
+        # 关闭Bot资源
+        from src.common import config
+        if hasattr(config, 'bot') and config.bot is not None:
+            config.bot.close()
+        # 销毁GUI窗口
+        self.root.quit()
+        self.root.destroy()
+        sys.exit(0)
 
     def _restore_session(self):
         """从上次会话加载命令书、例程和小地图。"""

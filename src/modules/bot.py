@@ -127,7 +127,7 @@ class Bot(Configurable):
                             num_pets = pet_settings.num_pets.get()  # 获取宠物数量
                             
                             # 自动喂食宠物
-                            if auto_feed and now - last_fed > 1200 / num_pets:
+                            if auto_feed and now - last_fed > 800 / num_pets:
                                 press(self.config['Feed pet'], 1)  # 按下喂食宠物的按键
                                 last_fed = now  # 更新上次喂食时间
                             

@@ -16,6 +16,13 @@ def signal_handler(sig, frame):
     # 关闭Bot资源
     if 'bot' in locals() and bot is not None:
         bot.close()
+    # 关闭GUI
+    if 'gui' in locals() and gui is not None:
+        try:
+            gui.root.quit()
+            gui.root.destroy()
+        except Exception as e:
+            print(f'[!] 关闭GUI时出错: {e}')
     print('\n[~] Auto Maple 已关闭')
     sys.exit(0)
 
@@ -53,11 +60,5 @@ print('\n[~] Auto Maple 初始化成功')
 print('\n[~] 按 Ctrl+C 退出')
 
 gui = GUI()
+# GUI 在主线程运行 mainloop，其他线程已启动
 gui.start()
-
-# 保持主线程运行
-try:
-    while True:
-        time.sleep(1)
-except KeyboardInterrupt:
-    signal_handler(None, None)

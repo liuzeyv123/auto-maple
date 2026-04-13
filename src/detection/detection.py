@@ -172,14 +172,24 @@ class ArrowPredictionClient:
         if self.client is not None:
             # 使用异步方式关闭客户端
             if self.loop is not None and not self.loop.is_closed():
-                self.loop.run_until_complete(self.client.aclose())
+                try:
+                    self.loop.run_until_complete(self.client.aclose())
+                except RuntimeError:
+                    # 如果循环已经停止，创建临时循环来关闭客户端
+                    temp_loop = asyncio.new_event_loop()
+                    try:
+                        temp_loop.run_until_complete(self.client.aclose())
+                    finally:
+                        temp_loop.close()
             else:
                 # 如果循环已关闭，创建临时循环来关闭客户端
                 temp_loop = asyncio.new_event_loop()
-                temp_loop.run_until_complete(self.client.aclose())
-                temp_loop.close()
+                try:
+                    temp_loop.run_until_complete(self.client.aclose())
+                finally:
+                    temp_loop.close()
             self.client = None
-        
+
         # 关闭事件循环
         if self.loop is not None and not self.loop.is_closed():
             self.loop.close()

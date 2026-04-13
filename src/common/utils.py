@@ -316,29 +316,35 @@ def enter_cash_shop():
     """
     import cv2
     import src.common.config as config
-    
+
     # 加载商城图片模板
     shop_template = cv2.imread('assets/shop.png', 0)
+    shop_exit_template = cv2.imread('assets/shop_exit.png', 0)
     if shop_template is None:
         print("错误: 无法加载商城图片模板 assets/shop.png")
         return
-    
+
     print("开始尝试进入商城，持续按 F5 直到检测到商城界面...")
-    
+
     # 持续按 F5 直到检测到商城图片
-    while True:
+    while config.enabled:
         # 按 F5
         press("f5", 3, down_time=0.2, up_time=0.2)
         # 等待一段时间让界面响应
         time.sleep(0.5)
-        
+
+        # 每次循环重新获取最新帧
+        frame = config.capture.frame
+
         # 检查是否捕获到帧
-        if hasattr(config, 'capture') and hasattr(config.capture, 'frame') and config.capture.frame is not None:
+        if frame is not None:
             # 尝试匹配商城图片
-            matches = multi_match(config.capture.frame, shop_template, threshold=0.8)
-            if matches:
+            matches = multi_match(frame, shop_template, threshold=0.8)
+            matches2 = multi_match(frame[:frame.shape[0] // 8, :], shop_exit_template, threshold=0.7)
+            if matches or matches2:
                 print("检测到商城界面，停止按 F5")
                 break
+
         # 避免无限循环导致系统资源占用过高
         time.sleep(0.5)
 
@@ -368,25 +374,16 @@ def exit_cash_shop():
         # 获取当前游戏画面
         frame = config.capture.frame
         if frame is not None:
-            # 计算右上角1/8区域的坐标
-            height, width = frame.shape[:2]
-            region_x = width * 3 // 4  # 从3/4宽度开始
-            region_y = 0  # 从顶部开始
-            region_width = width // 4  # 宽度的1/4
-            region_height = height // 2  # 高度的1/2
-            
-            # 裁剪右上角区域
-            top_right_region = frame[region_y:region_y+region_height, region_x:region_x+region_width]
-            
-            # 在裁剪区域中寻找退出按钮
-            matches = multi_match(top_right_region, exit_template, threshold=0.8)
-            
+            # 在右上角1/8区域寻找退出按钮
+            matches = multi_match(frame[:frame.shape[0] // 8, :],
+                                                 exit_template,
+                                                 threshold=0.7)
             if matches:
                 # 找到退出按钮，计算实际坐标并点击
                 match_x, match_y = matches[0]
-                # 转换为屏幕坐标
-                screen_x = region_x + match_x
-                screen_y = region_y + match_y
+                # 转换为屏幕坐标（现在是整个上1/8区域，不需要调整x坐标）
+                screen_x = round(match_x + config.capture.window['left'])
+                screen_y = round(match_y + config.capture.window['top'])
                 print(f"找到商城退出按钮，位置: ({screen_x}, {screen_y})")
                 # 点击退出按钮
                 click((screen_x, screen_y), 'left')
