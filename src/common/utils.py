@@ -381,7 +381,7 @@ def exit_cash_shop():
             if matches:
                 # 找到退出按钮，计算实际坐标并点击
                 match_x, match_y = matches[0]
-                # 转换为屏幕坐标（现在是整个上1/8区域，不需要调整x坐标）
+                # 转换为屏幕坐标（需要考虑游戏窗口的偏移量）
                 screen_x = round(match_x + config.capture.window['left'])
                 screen_y = round(match_y + config.capture.window['top'])
                 print(f"找到商城退出按钮，位置: ({screen_x}, {screen_y})")
