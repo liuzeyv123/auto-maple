@@ -1,71 +1,22 @@
-"""A module for simulating low-level keyboard and mouse key presses."""
+"""A module for simulating low-level keyboard and mouse key presses.
 
-import ctypes
-import time
-import win32con
-import win32api
+Uses Interception driver for kernel-level input injection.
+"""
+
 from src.common.decorators import run_if_enabled
-from ctypes import wintypes
-from random import random
 
-# 配置输入模式：'default' | 'raw' | 'enhanced' | 'interception'
-INPUT_MODE = 'interception'  # 修改此处以切换输入模式
-
-# Interception 模块（如果启用 interception 模式）
+# Interception 驱动初始化
 _INTERCEPTION_AVAILABLE = False
 _interception_driver = None
-if INPUT_MODE == 'interception':
-    try:
-        from src.common.interception_input import get_interception
-        _interception_driver = get_interception()
-        _INTERCEPTION_AVAILABLE = _interception_driver.is_available
-        if not _INTERCEPTION_AVAILABLE:
-            print(f"警告: Interception 不可用: {_interception_driver.error_message}")
-            print("回退到 enhanced 输入模式")
-    except Exception as e:
-        print(f"警告: 初始化 Interception 失败 ({e})，使用默认输入模式")
 
-# Raw Input 模块（如果启用 raw 或 enhanced 模式）
-if INPUT_MODE in ['raw', 'enhanced']:
-    try:
-        from src.common.raw_input import (
-            key_down_raw, key_up_raw,
-            key_down_enhanced, key_up_enhanced,
-            press_enhanced
-        )
-        RAW_INPUT_AVAILABLE = True
-    except ImportError:
-        RAW_INPUT_AVAILABLE = False
-        print("警告: raw_input 模块未找到，使用默认输入模式")
-else:
-    RAW_INPUT_AVAILABLE = False
-
-
-user32 = ctypes.WinDLL('user32', use_last_error=True)
-
-# 默认模式下的 SendInput 频率控制
-_last_sendinput_time_default = 0.0
-_MIN_SENDINPUT_INTERVAL_DEFAULT = 0.01  # 默认模式最小间隔
-
-def _rate_limit_sendinput_default():
-    """限制 SendInput 调用频率，防止句柄泄漏"""
-    global _last_sendinput_time_default
-    current_time = time.time()
-    time_since_last = current_time - _last_sendinput_time_default
-    if time_since_last < _MIN_SENDINPUT_INTERVAL_DEFAULT:
-        time.sleep(_MIN_SENDINPUT_INTERVAL_DEFAULT - time_since_last)
-    _last_sendinput_time_default = time.time()
-
-
-INPUT_MOUSE = 0
-INPUT_KEYBOARD = 1
-INPUT_HARDWARE = 2
-
-KEYEVENTF_EXTENDEDKEY = 0x0001
-KEYEVENTF_KEYUP = 0x0002
-KEYEVENTF_UNICODE = 0x0004
-
-MAPVK_VK_TO_VSC = 0
+try:
+    from src.common.interception_input import get_interception
+    _interception_driver = get_interception()
+    _INTERCEPTION_AVAILABLE = _interception_driver.is_available
+    if not _INTERCEPTION_AVAILABLE:
+        print(f"[!] Interception 不可用: {_interception_driver.error_message}")
+except Exception as e:
+    print(f"[!] 初始化 Interception 失败 ({e})")
 
 # https://docs.microsoft.com/en-us/windows/win32/inputdev/virtual-key-codes?redirectedfrom=MSDN
 # Do not add 'alt' to KEY_MAP: it does not register in MapleStory when sent via SendInput.
@@ -158,211 +109,66 @@ KEY_MAP = {
 
 
 #################################
-#     C Struct Definitions      #
-#################################
-wintypes.ULONG_PTR = wintypes.WPARAM
-
-
-class KeyboardInput(ctypes.Structure):
-    _fields_ = (('wVk', wintypes.WORD),
-                ('wScan', wintypes.WORD),
-                ('dwFlags', wintypes.DWORD),
-                ('time', wintypes.DWORD),
-                ('dwExtraInfo', wintypes.ULONG_PTR))
-
-    def __init__(self, *args, **kwargs):
-        super(KeyboardInput, self).__init__(*args, **kwargs)
-        if not self.dwFlags & KEYEVENTF_UNICODE:
-            self.wScan = user32.MapVirtualKeyExW(self.wVk, MAPVK_VK_TO_VSC, 0)
-
-
-class MouseInput(ctypes.Structure):
-    _fields_ = (('dx', wintypes.LONG),
-                ('dy', wintypes.LONG),
-                ('mouseData', wintypes.DWORD),
-                ('dwFlags', wintypes.DWORD),
-                ('time', wintypes.DWORD),
-                ('dwExtraInfo', wintypes.ULONG_PTR))
-
-
-class HardwareInput(ctypes.Structure):
-    _fields_ = (('uMsg', wintypes.DWORD),
-                ('wParamL', wintypes.WORD),
-                ('wParamH', wintypes.WORD))
-
-
-class Input(ctypes.Structure):
-    class _Input(ctypes.Union):
-        _fields_ = (('ki', KeyboardInput),
-                    ('mi', MouseInput),
-                    ('hi', HardwareInput))
-
-    _anonymous_ = ('_input',)
-    _fields_ = (('type', wintypes.DWORD),
-                ('_input', _Input))
-
-
-LPINPUT = ctypes.POINTER(Input)
-
-
-def err_check(result, _, args):
-    if result == 0:
-        raise ctypes.WinError(ctypes.get_last_error())
-    else:
-        return args
-
-
-user32.SendInput.errcheck = err_check
-user32.SendInput.argtypes = (wintypes.UINT, LPINPUT, ctypes.c_int)
-
-
-#################################
 #           Functions           #
 #################################
 @run_if_enabled
 def key_down(key):
     """
-    Simulates a key-down action. Can be cancelled by Bot.toggle_enabled.
-    根据 INPUT_MODE 配置使用不同的输入方法：
-    - 'default': 标准虚拟键码（可被检测）
-    - 'raw': 扫描码（较难检测）
-    - 'enhanced': 增强扫描码+时间戳+随机化
-    - 'interception': 内核驱动级别输入（需安装驱动）
-    
+    Simulates a key-down action via Interception driver.
+    Can be cancelled by Bot.toggle_enabled.
+
     :param key:     The key to press.
     :return:        None
     """
-
     key = key.lower()
-    if key not in KEY_MAP.keys():
+    if key not in KEY_MAP:
         print(f"Invalid keyboard input: '{key}'.")
+        return
+
+    vk_code = KEY_MAP[key]
+    if _INTERCEPTION_AVAILABLE:
+        _interception_driver.key_down(key, vk_code)
     else:
-        # 检查是否需要打印按键信息
-        import src.common.config as config
-        print_press_msg = False
-        if hasattr(config.bot, 'command_book') and hasattr(config.bot.command_book, 'module'):
-            module = config.bot.command_book.module
-            print_press_msg = getattr(module, 'PRINT_PRESS_MSG', False)
-        
-        vk_code = KEY_MAP[key]
-        
-        # 根据 INPUT_MODE 选择输入方法
-        if INPUT_MODE == 'interception' and _INTERCEPTION_AVAILABLE:
-            # Interception 模式：内核驱动级别输入（按键按下）
-            _interception_driver.key_down(key, vk_code)
-        elif INPUT_MODE == 'enhanced' and RAW_INPUT_AVAILABLE:
-            # 增强模式：扫描码 + 时间戳 + 高级随机化
-            key_down_enhanced(key, vk_code)
-        elif INPUT_MODE == 'raw' and RAW_INPUT_AVAILABLE:
-            # Raw 模式：使用扫描码
-            key_down_raw(key, vk_code)
-        else:
-            # 默认模式：标准虚拟键码
-            time.sleep(0.005 + 0.01 * random())
-            
-            if print_press_msg:
-                print(f"Key down: '{key}'")
-
-            x = Input(type=INPUT_KEYBOARD, ki=KeyboardInput(wVk=vk_code))
-            _rate_limit_sendinput_default()  # 限制频率
-            user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
-
-            time.sleep(0.005 + 0.01 * random())
+        print(f"[!] Interception not available, cannot press '{key}'")
 
 
 def key_up(key):
     """
-    Simulates a key-up action. Cannot be cancelled by Bot.toggle_enabled.
-    This is to ensure no keys are left in the 'down' state when the program pauses.
-    根据 INPUT_MODE 配置使用不同的输入方法。
-    
-    :param key:     The key to press.
+    Simulates a key-up action via Interception driver.
+    Cannot be cancelled by Bot.toggle_enabled.
+
+    :param key:     The key to release.
     :return:        None
     """
-
     key = key.lower()
-    if key not in KEY_MAP.keys():
+    if key not in KEY_MAP:
         print(f"Invalid keyboard input: '{key}'.")
-    else:
-        # 检查是否需要打印按键信息
-        import src.common.config as config
-        print_press_msg = False
-        if hasattr(config.bot, 'command_book') and hasattr(config.bot.command_book, 'module'):
-            module = config.bot.command_book.module
-            print_press_msg = getattr(module, 'PRINT_PRESS_MSG', False)
-        
-        vk_code = KEY_MAP[key]
-        
-        # 根据 INPUT_MODE 选择输入方法
-        if INPUT_MODE == 'interception' and _INTERCEPTION_AVAILABLE:
-            # Interception 模式：内核驱动级别输入（按键释放）
-            _interception_driver.key_up(key, vk_code)
-        elif INPUT_MODE == 'enhanced' and RAW_INPUT_AVAILABLE:
-            # 增强模式
-            key_up_enhanced(key, vk_code)
-        elif INPUT_MODE == 'raw' and RAW_INPUT_AVAILABLE:
-            # Raw 模式
-            key_up_raw(key, vk_code)
-        else:
-            # 默认模式
-            time.sleep(0.005 + 0.01 * random())
-            
-            if print_press_msg:
-                print(f"Key up: '{key}'")
+        return
 
-            x = Input(type=INPUT_KEYBOARD, ki=KeyboardInput(wVk=vk_code, dwFlags=KEYEVENTF_KEYUP))
-            _rate_limit_sendinput_default()  # 限制频率
-            user32.SendInput(1, ctypes.byref(x), ctypes.sizeof(x))
-
-            time.sleep(0.005 + 0.01 * random())
+    vk_code = KEY_MAP[key]
+    if _INTERCEPTION_AVAILABLE:
+        _interception_driver.key_up(key, vk_code)
 
 
 @run_if_enabled
 def press(key, n, down_time=0.05, up_time=0.1):
     """
-    Presses KEY N times, holding it for DOWN_TIME seconds, and releasing for UP_TIME seconds.
-    根据 INPUT_MODE 配置使用不同的输入方法。
-    
+    Presses KEY N times via Interception driver.
+
     :param key:         The keyboard input to press.
     :param n:           Number of times to press KEY.
     :param down_time:   Duration of down-press (in seconds).
     :param up_time:     Duration of release (in seconds).
     :return:            None
     """
-
-    # 检查是否需要打印按键信息
-    import src.common.config as config
-    print_press_msg = False
-    if hasattr(config.bot, 'command_book') and hasattr(config.bot.command_book, 'module'):
-        module = config.bot.command_book.module
-        print_press_msg = getattr(module, 'PRINT_PRESS_MSG', False)
-    
-    # 根据 INPUT_MODE 选择输入方法
-    if INPUT_MODE == 'interception' and _INTERCEPTION_AVAILABLE:
-        # Interception 模式：内核驱动级别输入
+    if _INTERCEPTION_AVAILABLE:
         _interception_driver.press(key, n, down_time, up_time)
-    elif INPUT_MODE == 'enhanced' and RAW_INPUT_AVAILABLE:
-        # 增强模式：使用 press_enhanced（已包含随机化）
-        vk_code = KEY_MAP.get(key.lower(), 0)
-        if vk_code:
-            for _ in range(n):
-                press_enhanced(key, vk_code, down_time, up_time)
-    else:
-        # 默认或 Raw 模式
-        for _ in range(n):
-            key_down(key)
-            time.sleep(down_time * (0.8 + 0.4 * random()))
-            key_up(key)
-            time.sleep(up_time * (0.8 + 0.4 * random()))
-    
-    if print_press_msg:
-        print(f"Pressed '{key}' {n} times")
 
 
 @run_if_enabled
 def click(position, button='left'):
     """
-    Simulate a mouse click with BUTTON at POSITION.
+    Simulate a mouse click with BUTTON at POSITION via Interception driver.
     :param position:    The (x, y) position at which to click.
     :param button:      Either the left or right mouse button.
     :return:            None
@@ -370,37 +176,7 @@ def click(position, button='left'):
 
     if button not in ['left', 'right']:
         print(f"'{button}' is not a valid mouse button.")
-    else:
-        # Interception 模式：内核驱动级别鼠标输入
-        if INPUT_MODE == 'interception' and _INTERCEPTION_AVAILABLE:
-            _interception_driver.click(position, button)
-            return
+        return
 
-        # 随机延迟
-        time.sleep(0.005 + 0.01 * random())
-        
-        if button == 'left':
-            down_event = win32con.MOUSEEVENTF_LEFTDOWN
-            up_event = win32con.MOUSEEVENTF_LEFTUP
-        else:
-            down_event = win32con.MOUSEEVENTF_RIGHTDOWN
-            up_event = win32con.MOUSEEVENTF_RIGHTUP
-        
-        # 鼠标移动到位置时添加随机偏移
-        offset_x = int((random() - 0.5) * 3)
-        offset_y = int((random() - 0.5) * 3)
-        target_position = (position[0] + offset_x, position[1] + offset_y)
-        win32api.SetCursorPos(target_position)
-        
-        # 随机延迟
-        time.sleep(0.005 + 0.01 * random())
-        
-        win32api.mouse_event(down_event, target_position[0], target_position[1], 0, 0)
-        
-        # 随机延迟
-        time.sleep(0.005 + 0.01 * random())
-        
-        win32api.mouse_event(up_event, target_position[0], target_position[1], 0, 0)
-        
-        # 随机延迟
-        time.sleep(0.005 + 0.01 * random())
+    if _INTERCEPTION_AVAILABLE:
+        _interception_driver.click(position, button)
