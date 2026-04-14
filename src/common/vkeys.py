@@ -8,8 +8,22 @@ from src.common.decorators import run_if_enabled
 from ctypes import wintypes
 from random import random
 
-# 配置输入模式：'default' | 'raw' | 'enhanced'
-INPUT_MODE = 'enhanced'  # 修改此处以切换输入模式
+# 配置输入模式：'default' | 'raw' | 'enhanced' | 'interception'
+INPUT_MODE = 'interception'  # 修改此处以切换输入模式
+
+# Interception 模块（如果启用 interception 模式）
+_INTERCEPTION_AVAILABLE = False
+_interception_driver = None
+if INPUT_MODE == 'interception':
+    try:
+        from src.common.interception_input import get_interception
+        _interception_driver = get_interception()
+        _INTERCEPTION_AVAILABLE = _interception_driver.is_available
+        if not _INTERCEPTION_AVAILABLE:
+            print(f"警告: Interception 不可用: {_interception_driver.error_message}")
+            print("回退到 enhanced 输入模式")
+    except Exception as e:
+        print(f"警告: 初始化 Interception 失败 ({e})，使用默认输入模式")
 
 # Raw Input 模块（如果启用 raw 或 enhanced 模式）
 if INPUT_MODE in ['raw', 'enhanced']:
@@ -212,7 +226,8 @@ def key_down(key):
     根据 INPUT_MODE 配置使用不同的输入方法：
     - 'default': 标准虚拟键码（可被检测）
     - 'raw': 扫描码（较难检测）
-    - 'enhanced': 增强扫描码+时间戳+随机化（最难检测）
+    - 'enhanced': 增强扫描码+时间戳+随机化
+    - 'interception': 内核驱动级别输入（需安装驱动）
     
     :param key:     The key to press.
     :return:        None
@@ -232,7 +247,10 @@ def key_down(key):
         vk_code = KEY_MAP[key]
         
         # 根据 INPUT_MODE 选择输入方法
-        if INPUT_MODE == 'enhanced' and RAW_INPUT_AVAILABLE:
+        if INPUT_MODE == 'interception' and _INTERCEPTION_AVAILABLE:
+            # Interception 模式：内核驱动级别输入（按键按下）
+            _interception_driver.key_down(key, vk_code)
+        elif INPUT_MODE == 'enhanced' and RAW_INPUT_AVAILABLE:
             # 增强模式：扫描码 + 时间戳 + 高级随机化
             key_down_enhanced(key, vk_code)
         elif INPUT_MODE == 'raw' and RAW_INPUT_AVAILABLE:
@@ -276,7 +294,10 @@ def key_up(key):
         vk_code = KEY_MAP[key]
         
         # 根据 INPUT_MODE 选择输入方法
-        if INPUT_MODE == 'enhanced' and RAW_INPUT_AVAILABLE:
+        if INPUT_MODE == 'interception' and _INTERCEPTION_AVAILABLE:
+            # Interception 模式：内核驱动级别输入（按键释放）
+            _interception_driver.key_up(key, vk_code)
+        elif INPUT_MODE == 'enhanced' and RAW_INPUT_AVAILABLE:
             # 增强模式
             key_up_enhanced(key, vk_code)
         elif INPUT_MODE == 'raw' and RAW_INPUT_AVAILABLE:
@@ -317,7 +338,10 @@ def press(key, n, down_time=0.05, up_time=0.1):
         print_press_msg = getattr(module, 'PRINT_PRESS_MSG', False)
     
     # 根据 INPUT_MODE 选择输入方法
-    if INPUT_MODE == 'enhanced' and RAW_INPUT_AVAILABLE:
+    if INPUT_MODE == 'interception' and _INTERCEPTION_AVAILABLE:
+        # Interception 模式：内核驱动级别输入
+        _interception_driver.press(key, n, down_time, up_time)
+    elif INPUT_MODE == 'enhanced' and RAW_INPUT_AVAILABLE:
         # 增强模式：使用 press_enhanced（已包含随机化）
         vk_code = KEY_MAP.get(key.lower(), 0)
         if vk_code:
@@ -347,6 +371,11 @@ def click(position, button='left'):
     if button not in ['left', 'right']:
         print(f"'{button}' is not a valid mouse button.")
     else:
+        # Interception 模式：内核驱动级别鼠标输入
+        if INPUT_MODE == 'interception' and _INTERCEPTION_AVAILABLE:
+            _interception_driver.click(position, button)
+            return
+
         # 随机延迟
         time.sleep(0.005 + 0.01 * random())
         
