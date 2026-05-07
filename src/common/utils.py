@@ -183,6 +183,50 @@ def multi_match_multiscale(
     return results
 
 
+def multi_match_color(frame, template, threshold=0.95):
+    """
+    在彩色FRAME中找到所有与TEMPLATE相似度至少为THRESHOLD的匹配项。
+    支持BGR/BGRA彩色帧和灰度/彩色(含RGBA)模板自动兼容。
+    :param frame:       要搜索的BGR或BGRA彩色图像。
+    :param template:    要匹配的模板（支持灰度、BGR、BGRA）。
+    :param threshold:   每个结果必须匹配的最小相似度。
+    :return:            超过THRESHOLD的匹配项中心点数组[(x,y), ...]。
+    """
+    if template.shape[0] > frame.shape[0] or template.shape[1] > frame.shape[1]:
+        return []
+
+    # 处理frame：确保是BGR三通道
+    if frame.ndim == 2:
+        bgr_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+    elif frame.shape[2] == 4:
+        bgr_frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
+    else:
+        bgr_frame = frame
+
+    # 处理template：确保是BGR三通道
+    if template.ndim == 2:
+        bgr_template = cv2.cvtColor(template, cv2.COLOR_GRAY2BGR)
+    elif template.shape[2] == 4:
+        bgr_template = cv2.cvtColor(template, cv2.COLOR_BGRA2BGR)
+    else:
+        bgr_template = template
+
+    result = cv2.matchTemplate(bgr_frame, bgr_template, cv2.TM_CCOEFF_NORMED)
+    locations = np.where(result >= threshold)
+
+    if len(locations[0]) == 0:
+        return []
+
+    template_w = bgr_template.shape[1]
+    template_h = bgr_template.shape[0]
+    results = [(int(round(p[0] + template_w / 2)), int(round(p[1] + template_h / 2)))
+               for p in zip(*locations[::-1])]
+
+    del result
+    del locations
+    return results
+
+
 def convert_to_relative(point, frame):
     """
     将 POINT（像素）转换为基于 FRAME 的相对坐标 [0, 1]。
