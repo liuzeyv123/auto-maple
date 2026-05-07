@@ -487,7 +487,7 @@ class Move(Command):
                         # 执行跳跃
                         press(jump_key, 1, down_time=0.05, up_time=0.05)
                         # 随机延迟
-                        time.sleep(utils.rand_float(0.05, 0.12))
+                        time.sleep(utils.rand_float(0.025, 0.06))
                     # 执行移动步骤
                     step(key, point)
                     # 如果启用布局记录，添加当前位置到布局
@@ -693,29 +693,29 @@ class SkillRotation(Command):
             
             # 模拟人类操作：跳跃前的随机延迟
             if utils.bernoulli(0.6):
-                time.sleep(utils.rand_float(0.03, 0.1))
+                time.sleep(utils.rand_float(0.015, 0.05))
             
             # 随机调整跳跃次数，模拟人类操作
             jump_presses = random.choice([2, 2, 2, 1])  # 大部分情况下按2次，偶尔按1次
             # 随机调整按下和释放时间
-            down_time = utils.rand_float(0.04, 0.08)
-            up_time = utils.rand_float(0.04, 0.08)
+            down_time = utils.rand_float(0.02, 0.04)
+            up_time = utils.rand_float(0.02, 0.04)
             press(jump_key, jump_presses, down_time=down_time, up_time=up_time)
             
             # 模拟人类操作：攻击前的随机延迟
             if utils.bernoulli(0.7):
-                time.sleep(utils.rand_float(0.05, 0.12))
+                time.sleep(utils.rand_float(0.025, 0.06))
             
             # 随机调整攻击次数，模拟人类操作
             attack_presses = random.choice([3, 4, 4])  # 大部分情况下按4次，偶尔按3次
             # 随机调整按下和释放时间
-            down_time = utils.rand_float(0.04, 0.08)
-            up_time = utils.rand_float(0.04, 0.08)
+            down_time = utils.rand_float(0.02, 0.04)
+            up_time = utils.rand_float(0.02, 0.04)
             press(main_key, attack_presses, down_time=down_time, up_time=up_time)
             
             # 模拟人类操作：攻击后的随机延迟
             if utils.bernoulli(0.6):
-                time.sleep(utils.rand_float(0.05, 0.15))
+                time.sleep(utils.rand_float(0.025, 0.075))
         
         elif attack_type == 'hold':
             # 按住攻击模式

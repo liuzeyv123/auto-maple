@@ -394,48 +394,50 @@ def enter_cash_shop():
 
 
 def exit_cash_shop():
-    """发送 Esc/Enter 序列离开商城并等待加载。"""
+    """持续按 Esc 直至检测到退出确认，按 Enter 后检查是否仍处于商城。"""
     print("开始退出商城...")
-    time.sleep(1)
-    print("已发送 Esc")
-    press("esc", 1, down_time=0.4, up_time=0.4)
-    time.sleep(1)
-    print("已发送 Esc")
-    press("esc", 1, down_time=0.4, up_time=0.4)
-    time.sleep(1)
-    print("已发送 Enter")
-    press("enter", 1, down_time=0.4, up_time=0.4)
-    time.sleep(5)
-    
-    # 在右上角1/8区域寻找商城退出按钮
-    import cv2
-    from src.common.vkeys import click
-    import src.common.config as config
-    
-    # 加载退出按钮模板
-    exit_template = cv2.imread('assets/shop_exit.png', 0)
-    if exit_template is not None:
-        # 获取当前游戏画面
+
+    # 加载模板
+    shop_main_template = cv2.imread('assets/shop_main.png', 0)
+    shop_exit2_template = cv2.imread('assets/shop_exit2.png', 0)
+    if shop_main_template is None or shop_exit2_template is None:
+        print("无法加载商城模板")
+        return
+
+    while config.enabled:
+        # 持续按 Esc 直至出现退出确认界面
+        while config.enabled:
+            frame = config.capture.frame
+            if frame is None:
+                press("esc", 1, down_time=0.4, up_time=0.4)
+                time.sleep(1)
+                continue
+
+            exit_matches = multi_match(frame, shop_exit2_template, threshold=0.7)
+            if exit_matches:
+                break
+
+            press("esc", 1, down_time=0.4, up_time=0.4)
+            time.sleep(1)
+
+        # 检测到确认界面，按 Enter 确认退出
+        print("检测到退出确认，按 Enter 确认...")
+        press("enter", 1, down_time=0.4, up_time=0.4)
+        time.sleep(1)
+
+        # 检查是否仍在商城内
         frame = config.capture.frame
         if frame is not None:
-            # 在右上角1/8区域寻找退出按钮
-            matches = multi_match(frame[:frame.shape[0] // 8, :],
-                                                 exit_template,
-                                                 threshold=0.7)
-            if matches:
-                # 找到退出按钮，计算实际坐标并点击
-                match_x, match_y = matches[0]
-                # 转换为屏幕坐标（需要考虑游戏窗口的偏移量）
-                screen_x = round(match_x + config.capture.window['left'])
-                screen_y = round(match_y + config.capture.window['top'])
-                print(f"找到商城退出按钮，位置: ({screen_x}, {screen_y})")
-                # 点击退出按钮
-                click((screen_x, screen_y), 'left')
-                time.sleep(2)
-                print("已点击退出按钮")
+            main_matches = multi_match(frame[3 * frame.shape[0] // 4:, :],
+                                       shop_main_template,
+                                       threshold=0.7)
+            if not main_matches:
+                print("已离开商城")
+                break
             else:
-                print("未找到商城退出按钮")
-    
+                print("仍在商城中，继续重试...")
+                time.sleep(1)
+
     print("退出商城完成")
 
 

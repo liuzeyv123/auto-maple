@@ -99,7 +99,7 @@ def reset():
 move_tolerance = 0.1
 
 # 调整到特定位置时与该位置的允许误差
-adjust_tolerance = 0.02
+adjust_tolerance = 0.01
 
 # 机器人是否应该将新的玩家位置保存到当前布局
 record_layout = False
