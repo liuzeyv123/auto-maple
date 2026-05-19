@@ -298,6 +298,7 @@ class Bot(Configurable):
         
         # 按交互键开始解符文
         press(self.config['Interact'], 1, down_time=0.2)        # 继承自Configurable
+        time.sleep(0.8)  # 等待符文界面弹出
 
         print('\n正在解决符文:')
         solution_found = False

@@ -4,6 +4,7 @@ import tkinter as tk
 from src.gui.interfaces import KeyBindings
 from src.gui.settings.pets import Pets
 from src.gui.settings.item_buffs import ItemBuffs
+from src.gui.settings.dy_threshold import DyThreshold
 from src.gui.interfaces import Tab, Frame
 from src.common import config
 
@@ -32,6 +33,8 @@ class Settings(Tab):
         self.column2.grid(row=0, column=2, sticky=tk.N, padx=10, pady=10)
         self.class_bindings = KeyBindings(self.column2, f'No Command Book Selected', None)
         self.class_bindings.pack(side=tk.TOP, fill='x', expand=True)
+        self.dy_threshold = DyThreshold(self.column2)
+        self.dy_threshold.pack(side=tk.TOP, fill='x', expand=True, pady=(10, 0))
 
     def update_class_bindings(self):
         self.class_bindings.destroy()
